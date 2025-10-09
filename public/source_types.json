@@ -1,0 +1,41 @@
+{
+  "sourceTypes": [
+    {
+      "id": "water",
+      "name": "水道",
+      "category": "infrastructure",
+      "attributes": ["material", "diameter", "length", "installDate", "pressure"]
+    },
+    {
+      "id": "sewer",
+      "name": "下水道",
+      "category": "infrastructure",
+      "attributes": ["material", "diameter", "length", "installDate", "gradient"]
+    },
+    {
+      "id": "electric",
+      "name": "電道",
+      "category": "infrastructure",
+      "attributes": ["material", "diameter", "length", "installDate", "voltage"]
+    },
+    {
+      "id": "gas",
+      "name": "ガス",
+      "category": "infrastructure",
+      "attributes": ["material", "diameter", "length", "installDate", "pressure"]
+    },
+    {
+      "id": "junction",
+      "name": "接続点",
+      "category": "connection",
+      "attributes": ["type", "connections", "installDate"]
+    },
+    {
+      "id": "control",
+      "name": "制御装置",
+      "category": "equipment",
+      "attributes": ["type", "model", "manufacturer", "installDate"]
+    }
+  ]
+}
+

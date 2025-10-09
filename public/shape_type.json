@@ -1,0 +1,26 @@
+{
+  "shapes": {
+    "cylinder": {
+      "name": "円筒形",
+      "description": "管路などの円筒形オブジェクト",
+      "defaultRadius": 1,
+      "defaultHeight": 1,
+      "segments": 32
+    },
+    "sphere": {
+      "name": "球形",
+      "description": "接続点などの球形オブジェクト",
+      "defaultRadius": 1,
+      "widthSegments": 32,
+      "heightSegments": 32
+    },
+    "box": {
+      "name": "直方体",
+      "description": "制御ボックスなどの直方体オブジェクト",
+      "defaultWidth": 1,
+      "defaultHeight": 1,
+      "defaultDepth": 1
+    }
+  }
+}
+

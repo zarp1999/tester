@@ -1,0 +1,36 @@
+{
+  "userId": "user_001",
+  "positions": [
+    {
+      "id": "pos_001",
+      "camera": {
+        "position": [15, 15, 15],
+        "target": [0, 0, 0],
+        "fov": 75
+      },
+      "timestamp": "2025-10-09T10:30:00Z",
+      "description": "全体俯瞰ビュー"
+    },
+    {
+      "id": "pos_002",
+      "camera": {
+        "position": [5, 5, 5],
+        "target": [0, 0, 0],
+        "fov": 75
+      },
+      "timestamp": "2025-10-09T10:35:00Z",
+      "description": "近景ビュー"
+    },
+    {
+      "id": "pos_003",
+      "camera": {
+        "position": [0, 20, 0],
+        "target": [0, 0, 0],
+        "fov": 75
+      },
+      "timestamp": "2025-10-09T10:40:00Z",
+      "description": "真上ビュー"
+    }
+  ]
+}
+

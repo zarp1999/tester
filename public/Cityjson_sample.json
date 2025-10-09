@@ -1,0 +1,93 @@
+{
+  "type": "CityJSON",
+  "version": "1.1",
+  "objects": [
+    {
+      "id": "pipe_001",
+      "type": "cylinder",
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": [1, 10, 1],
+      "color": "#2196F3",
+      "attributes": {
+        "name": "水道管A",
+        "material": "鋼管",
+        "diameter": 300,
+        "length": 10,
+        "installDate": "2020-04-15"
+      }
+    },
+    {
+      "id": "pipe_002",
+      "type": "cylinder",
+      "position": [5, 0, 0],
+      "rotation": [0, 0, 1.57],
+      "scale": [0.8, 8, 0.8],
+      "color": "#8B4513",
+      "attributes": {
+        "name": "下水道管B",
+        "material": "コンクリート",
+        "diameter": 250,
+        "length": 8,
+        "installDate": "2019-08-22"
+      }
+    },
+    {
+      "id": "pipe_003",
+      "type": "cylinder",
+      "position": [-5, 0, 5],
+      "rotation": [1.57, 0, 0],
+      "scale": [0.6, 12, 0.6],
+      "color": "#FFC107",
+      "attributes": {
+        "name": "電線管C",
+        "material": "PVC",
+        "diameter": 150,
+        "length": 12,
+        "installDate": "2021-02-10"
+      }
+    },
+    {
+      "id": "junction_001",
+      "type": "sphere",
+      "position": [0, 5, 0],
+      "rotation": [0, 0, 0],
+      "scale": [1.5, 1.5, 1.5],
+      "color": "#FF5722",
+      "attributes": {
+        "name": "接続点1",
+        "type": "ジョイント",
+        "connections": 3
+      }
+    },
+    {
+      "id": "box_001",
+      "type": "box",
+      "position": [10, 0, 0],
+      "rotation": [0, 0.5, 0],
+      "scale": [2, 3, 2],
+      "color": "#4CAF50",
+      "attributes": {
+        "name": "制御ボックス1",
+        "type": "制御装置",
+        "model": "CB-2000"
+      }
+    },
+    {
+      "id": "pipe_004",
+      "type": "cylinder",
+      "position": [0, -2, -8],
+      "rotation": [0, 0, 0],
+      "scale": [0.5, 6, 0.5],
+      "color": "#9C27B0",
+      "attributes": {
+        "name": "ガス管D",
+        "material": "PE管",
+        "diameter": 100,
+        "length": 6,
+        "installDate": "2022-11-03"
+      }
+    }
+  ]
+}
+

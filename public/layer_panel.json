@@ -1,0 +1,47 @@
+{
+  "layers": [
+    {
+      "id": "water",
+      "name": "水道",
+      "color": "#2196F3",
+      "visible": true,
+      "icon": "💧"
+    },
+    {
+      "id": "sewer",
+      "name": "下水道",
+      "color": "#8B4513",
+      "visible": true,
+      "icon": "🚰"
+    },
+    {
+      "id": "electric",
+      "name": "電道",
+      "color": "#FFC107",
+      "visible": true,
+      "icon": "⚡"
+    },
+    {
+      "id": "gas",
+      "name": "ガス",
+      "color": "#9C27B0",
+      "visible": true,
+      "icon": "🔥"
+    },
+    {
+      "id": "junction",
+      "name": "接続点",
+      "color": "#FF5722",
+      "visible": true,
+      "icon": "🔗"
+    },
+    {
+      "id": "control",
+      "name": "制御装置",
+      "color": "#4CAF50",
+      "visible": true,
+      "icon": "📦"
+    }
+  ]
+}
+
