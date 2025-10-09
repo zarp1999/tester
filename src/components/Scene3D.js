@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
+import { Sky } from 'three/examples/jsm/objects/Sky';
 import './Scene3D.css';
 
 function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
@@ -172,36 +173,35 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
 
     // シーンの作成
     const scene = new THREE.Scene();
-    
-    // 空のグラデーション背景
-    const skyColor = new THREE.Color(0x87CEEB); // 明るい空色
-    const groundColor = new THREE.Color(0xE0F6FF); // より明るい空色
-    scene.background = skyColor;
-    scene.fog = new THREE.Fog(skyColor, 50, 300);
-    
     sceneRef.current = scene;
 
-    // 太陽の追加
-    const sunGeometry = new THREE.SphereGeometry(5, 32, 32);
-    const sunMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0xFFDD00,
-      emissive: 0xFFDD00,
-      emissiveIntensity: 1
-    });
-    const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-    sun.position.set(50, 80, -100);
-    scene.add(sun);
+    // Sky.jsを使った空の作成
+    const sky = new Sky();
+    sky.scale.setScalar(450000);
+    scene.add(sky);
 
-    // 太陽の光輪
-    const glowGeometry = new THREE.SphereGeometry(8, 32, 32);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xFFFFAA,
-      transparent: true,
-      opacity: 0.3
-    });
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    glow.position.copy(sun.position);
-    scene.add(glow);
+    // 太陽の設定
+    const sun = new THREE.Vector3();
+
+    // Sky shaderのuniformsを設定
+    const skyUniforms = sky.material.uniforms;
+    skyUniforms['turbidity'].value = 10;      // 大気の濁り（0-20）
+    skyUniforms['rayleigh'].value = 2;        // レイリー散乱（0-4）
+    skyUniforms['mieCoefficient'].value = 0.005;  // ミー散乱係数
+    skyUniforms['mieDirectionalG'].value = 0.8;   // ミー散乱の方向性
+
+    // 太陽の位置を設定（仰角と方位角）
+    const elevation = 30;  // 仰角（度）
+    const azimuth = 180;   // 方位角（度）
+
+    const phi = THREE.MathUtils.degToRad(90 - elevation);
+    const theta = THREE.MathUtils.degToRad(azimuth);
+
+    sun.setFromSphericalCoords(1, phi, theta);
+    skyUniforms['sunPosition'].value.copy(sun);
+
+    // 霧の設定
+    scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
 
     // カメラの作成
     const camera = new THREE.PerspectiveCamera(
