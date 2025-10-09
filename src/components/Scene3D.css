@@ -4,21 +4,35 @@
   position: relative;
 }
 
-.scene-controls-info {
+.camera-info-container {
   position: absolute;
   bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 20px;
-  font-size: 14px;
-  pointer-events: none;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   z-index: 10;
 }
 
-.scene-controls-info p {
-  margin: 0;
+.camera-position-info {
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-size: 13px;
+  pointer-events: none;
+  max-width: 700px;
+  line-height: 1.5;
+}
+
+.camera-controls-info {
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-size: 13px;
+  pointer-events: none;
+  max-width: 700px;
+  line-height: 1.5;
 }
 

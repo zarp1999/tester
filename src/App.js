@@ -73,11 +73,6 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>CityJSON 3D ビューア</h1>
-        <p>管路インフラ可視化システム</p>
-      </header>
-
       <div className="main-content">
         <LayerControl
           layers={layerData.layers}
@@ -109,10 +104,6 @@ function App() {
           )}
         </div>
       </div>
-
-      <footer className="App-footer">
-        <p>Three.js + React による3次元可視化</p>
-      </footer>
     </div>
   );
 }

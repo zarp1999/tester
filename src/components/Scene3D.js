@@ -1,6 +1,5 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import './Scene3D.css';
 
 function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
@@ -13,6 +12,21 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const hoveredObjectRef = useRef(null);
+  const keysPressed = useRef({});
+  const cameraVelocity = useRef(new THREE.Vector3());
+  const initialCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
+  const initialCameraRotation = useRef(new THREE.Euler());
+  const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
+  
+  // カメラ位置情報のstate
+  const [cameraInfo, setCameraInfo] = useState({
+    x: 20.0,
+    y: 20.0,
+    z: 20.0,
+    roll: 0.0,
+    pitch: 0.0,
+    yaw: 0.0
+  });
 
   // レイヤー判定関数
   const getLayerFromObject = (obj) => {
@@ -143,15 +157,51 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     }
   };
 
+  // キーボード操作
+  const handleKeyDown = (event) => {
+    keysPressed.current[event.key.toLowerCase()] = true;
+  };
+
+  const handleKeyUp = (event) => {
+    keysPressed.current[event.key.toLowerCase()] = false;
+  };
+
   // 初期化
   useEffect(() => {
     if (!mountRef.current) return;
 
     // シーンの作成
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1e3c72);
-    scene.fog = new THREE.Fog(0x1e3c72, 30, 100);
+    
+    // 空のグラデーション背景
+    const skyColor = new THREE.Color(0x87CEEB); // 明るい空色
+    const groundColor = new THREE.Color(0xE0F6FF); // より明るい空色
+    scene.background = skyColor;
+    scene.fog = new THREE.Fog(skyColor, 50, 300);
+    
     sceneRef.current = scene;
+
+    // 太陽の追加
+    const sunGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const sunMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xFFDD00,
+      emissive: 0xFFDD00,
+      emissiveIntensity: 1
+    });
+    const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+    sun.position.set(50, 80, -100);
+    scene.add(sun);
+
+    // 太陽の光輪
+    const glowGeometry = new THREE.SphereGeometry(8, 32, 32);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xFFFFAA,
+      transparent: true,
+      opacity: 0.3
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.position.copy(sun.position);
+    scene.add(glow);
 
     // カメラの作成
     const camera = new THREE.PerspectiveCamera(
@@ -161,6 +211,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
       1000
     );
     camera.position.set(20, 20, 20);
+    camera.lookAt(0, 0, 0);
+    initialCameraPosition.current.copy(camera.position);
+    initialCameraRotation.current.copy(camera.rotation);
     cameraRef.current = camera;
 
     // レンダラーの作成
@@ -172,23 +225,40 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // コントロールの作成
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 5;
-    controls.maxDistance = 100;
-    controlsRef.current = controls;
+    // マウスドラッグでカメラ回転
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
 
-    // カメラ変更イベント
-    controls.addEventListener('change', () => {
-      if (onCameraMove) {
-        onCameraMove({
-          position: [camera.position.x, camera.position.y, camera.position.z],
-          target: [controls.target.x, controls.target.y, controls.target.z]
-        });
+    const onMouseDown = (event) => {
+      if (event.button === 2) { // 右クリック
+        isDragging = true;
+        previousMousePosition = { x: event.clientX, y: event.clientY };
       }
-    });
+    };
+
+    const onMouseMove = (event) => {
+      if (isDragging) {
+        const deltaX = event.clientX - previousMousePosition.x;
+        const deltaY = event.clientY - previousMousePosition.y;
+
+        camera.rotation.y -= deltaX * 0.005;
+        camera.rotation.x -= deltaY * 0.005;
+
+        // X軸の回転を制限（真上・真下を見すぎない）
+        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+      }
+    };
+
+    const onMouseUp = () => {
+      isDragging = false;
+    };
+
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
+    renderer.domElement.addEventListener('mousemove', onMouseMove);
+    renderer.domElement.addEventListener('mouseup', onMouseUp);
+    renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // ライティング
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -216,6 +286,8 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
     mountRef.current.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
 
     // リサイズハンドラー
     const handleResize = () => {
@@ -229,6 +301,100 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     // アニメーションループ
     const animate = () => {
       requestAnimationFrame(animate);
+
+      // キーボード操作でカメラ移動
+      const speed = keysPressed.current['shift'] ? 0.1 : 0.5; // Shiftで低速
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const up = new THREE.Vector3(0, 1, 0);
+
+      // W:上 S:下
+      if (keysPressed.current['w']) camera.position.add(up.clone().multiplyScalar(speed));
+      if (keysPressed.current['s']) camera.position.add(up.clone().multiplyScalar(-speed));
+
+      // A:左 D:右
+      if (keysPressed.current['a']) camera.position.add(right.clone().multiplyScalar(-speed));
+      if (keysPressed.current['d']) camera.position.add(right.clone().multiplyScalar(speed));
+
+      // Q:後進 E:前進
+      if (keysPressed.current['q']) camera.position.add(forward.clone().multiplyScalar(-speed));
+      if (keysPressed.current['e']) camera.position.add(forward.clone().multiplyScalar(speed));
+
+      // Y:位置向き初期化
+      if (keysPressed.current['y']) {
+        camera.position.copy(initialCameraPosition.current);
+        camera.rotation.copy(initialCameraRotation.current);
+        keysPressed.current['y'] = false;
+      }
+
+      // P:向き初期化
+      if (keysPressed.current['p']) {
+        camera.rotation.copy(initialCameraRotation.current);
+        keysPressed.current['p'] = false;
+      }
+
+      // O:位置初期化
+      if (keysPressed.current['o']) {
+        camera.position.copy(initialCameraPosition.current);
+        keysPressed.current['o'] = false;
+      }
+
+      // L:パン北向き
+      if (keysPressed.current['l']) {
+        camera.rotation.y = 0;
+        keysPressed.current['l'] = false;
+      }
+
+      // I:チルト水平
+      if (keysPressed.current['i']) {
+        camera.rotation.x = 0;
+        keysPressed.current['i'] = false;
+      }
+
+      // T:チルト真下
+      if (keysPressed.current['t']) {
+        camera.rotation.x = Math.PI / 2;
+        keysPressed.current['t'] = false;
+      }
+
+      // R:チルト水平・高さ初期値
+      if (keysPressed.current['r']) {
+        camera.rotation.x = 0;
+        camera.position.y = initialCameraPosition.current.y;
+        keysPressed.current['r'] = false;
+      }
+
+      // U:パン重心
+      if (keysPressed.current['u']) {
+        const direction = centerPosition.current.clone().sub(camera.position);
+        const angle = Math.atan2(direction.x, direction.z);
+        camera.rotation.y = angle;
+        keysPressed.current['u'] = false;
+      }
+
+      // J:位置重心
+      if (keysPressed.current['j']) {
+        camera.position.copy(centerPosition.current);
+        keysPressed.current['j'] = false;
+      }
+
+      // H:重心向き後進
+      if (keysPressed.current['h']) {
+        const direction = centerPosition.current.clone().sub(camera.position).normalize();
+        camera.position.add(direction.multiplyScalar(-speed));
+      }
+
+      // G:重心向き前進
+      if (keysPressed.current['g']) {
+        const direction = centerPosition.current.clone().sub(camera.position).normalize();
+        camera.position.add(direction.multiplyScalar(speed));
+      }
+
+      // K:重心真下
+      if (keysPressed.current['k']) {
+        camera.position.set(centerPosition.current.x, camera.position.y, centerPosition.current.z);
+        keysPressed.current['k'] = false;
+      }
 
       // レイキャスティングでホバー検出
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
@@ -260,7 +426,19 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
         hoveredObjectRef.current = hoveredObject;
       }
 
-      controls.update();
+      // カメラ位置情報を更新（フレームごとに更新すると重いので、適度に間引く）
+      if (Math.random() < 0.1) { // 約10%の確率で更新（フレームレート間引き）
+        const radToDeg = (rad) => ((rad * 180 / Math.PI) % 360).toFixed(1);
+        setCameraInfo({
+          x: camera.position.x,
+          y: camera.position.y,
+          z: camera.position.z,
+          roll: radToDeg(camera.rotation.z),
+          pitch: radToDeg(camera.rotation.x),
+          yaw: radToDeg(camera.rotation.y)
+        });
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -268,13 +446,19 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     // クリーンアップ
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
       if (mountRef.current) {
         mountRef.current.removeEventListener('mousemove', handleMouseMove);
         mountRef.current.removeEventListener('click', handleClick);
-        mountRef.current.removeChild(renderer.domElement);
+        if (renderer.domElement.parentNode === mountRef.current) {
+          mountRef.current.removeChild(renderer.domElement);
+        }
       }
+      renderer.domElement.removeEventListener('mousedown', onMouseDown);
+      renderer.domElement.removeEventListener('mousemove', onMouseMove);
+      renderer.domElement.removeEventListener('mouseup', onMouseUp);
       renderer.dispose();
-      controls.dispose();
     };
   }, [onCameraMove, onObjectClick]);
 
@@ -306,8 +490,15 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
   return (
     <div className="scene3d-container">
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
-      <div className="scene-controls-info">
-        <p>🖱️ マウス：回転 | ホイール：ズーム | 右クリック：移動</p>
+      <div className="camera-info-container">
+        <div className="camera-position-info">
+          ◆カメラ位置<br />
+          座標:東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m] 向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
+        </div>
+        <div className="camera-controls-info">
+          カメラ操作<br />
+          W:上 S:下 A:左 D:右 Q:後進 E:前進 右ドラッグ: 向き +左Shiftキー:低速 Y:位置向き初期化 P:向き初期化 O:位置初期化 L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値 U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
+        </div>
       </div>
     </div>
   );
