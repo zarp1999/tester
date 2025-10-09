@@ -1,0 +1,20 @@
+.pipeline-info-display {
+  color: white;
+  font-size: 10px;
+  line-height: 1.5;
+  margin-top: 5px;
+}
+
+.info-row {
+  margin: 3px 0;
+}
+
+.info-label {
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.info-value {
+  color: #cccccc;
+}
+

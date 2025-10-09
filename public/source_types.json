@@ -1,41 +1,42 @@
+[
 {
-  "sourceTypes": [
-    {
-      "id": "water",
-      "name": "水道",
-      "category": "infrastructure",
-      "attributes": ["material", "diameter", "length", "installDate", "pressure"]
-    },
-    {
-      "id": "sewer",
-      "name": "下水道",
-      "category": "infrastructure",
-      "attributes": ["material", "diameter", "length", "installDate", "gradient"]
-    },
-    {
-      "id": "electric",
-      "name": "電道",
-      "category": "infrastructure",
-      "attributes": ["material", "diameter", "length", "installDate", "voltage"]
-    },
-    {
-      "id": "gas",
-      "name": "ガス",
-      "category": "infrastructure",
-      "attributes": ["material", "diameter", "length", "installDate", "pressure"]
-    },
-    {
-      "id": "junction",
-      "name": "接続点",
-      "category": "connection",
-      "attributes": ["type", "connections", "installDate"]
-    },
-    {
-      "id": "control",
-      "name": "制御装置",
-      "category": "equipment",
-      "attributes": ["type", "model", "manufacturer", "installDate"]
-    }
-  ]
+  "id": "1",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "2",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "3",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "4",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "5",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "6",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "7",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "8",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "9",
+  "source_type": "\u6e2c\u91cf"
+},
+{
+  "id": "10",
+  "source_type": "\u6e2c\u91cf"
 }
-
+]

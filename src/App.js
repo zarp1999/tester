@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import Scene3D from './components/Scene3D';
-import InfoPanel from './components/InfoPanel';
-import LayerControl from './components/LayerControl';
-import CameraControl from './components/CameraControl';
 
+/**
+ * メインアプリケーションコンポーネント
+ * CityJSONデータを読み込み、3Dシーンを表示
+ */
 function App() {
   const [cityJsonData, setCityJsonData] = useState(null);
   const [layerData, setLayerData] = useState(null);
@@ -12,7 +13,15 @@ function App() {
   const [sourceTypes, setSourceTypes] = useState(null);
   const [userPositions, setUserPositions] = useState(null);
   const [selectedObject, setSelectedObject] = useState(null);
-  const [visibleLayers, setVisibleLayers] = useState({});
+  const [visibleLayers, setVisibleLayers] = useState({
+    water: true,
+    sewer: true,
+    electric: true,
+    gas: true,
+    junction: true,
+    control: true,
+    other: true
+  });
 
   // データの読み込み
   useEffect(() => {
@@ -32,8 +41,16 @@ function App() {
         setSourceTypes(sources);
         setUserPositions(positions);
 
-        // 全レイヤーを初期表示
-        const initialVisibility = {};
+        // 全レイヤーを初期表示（デフォルト値とマージ）
+        const initialVisibility = {
+          water: true,
+          sewer: true,
+          electric: true,
+          gas: true,
+          junction: true,
+          control: true,
+          other: true
+        };
         layers.layers.forEach(layer => {
           initialVisibility[layer.id] = layer.visible;
         });
@@ -74,12 +91,6 @@ function App() {
   return (
     <div className="App">
       <div className="main-content">
-        <LayerControl
-          layers={layerData.layers}
-          visibleLayers={visibleLayers}
-          onLayerToggle={handleLayerToggle}
-        />
-
         <div className="scene-container">
           <Scene3D
             cityJsonData={cityJsonData}
@@ -87,21 +98,6 @@ function App() {
             onObjectClick={handleObjectClick}
             onCameraMove={handleCameraPositionChange}
           />
-        </div>
-
-        <div className="right-panel">
-          {userPositions && (
-            <CameraControl
-              positions={userPositions.positions}
-            />
-          )}
-          
-          {selectedObject && (
-            <InfoPanel
-              object={selectedObject}
-              onClose={() => setSelectedObject(null)}
-            />
-          )}
         </div>
       </div>
     </div>

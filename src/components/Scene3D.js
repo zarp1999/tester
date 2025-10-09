@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { Sky } from 'three/examples/jsm/objects/Sky';
+import SkyComponent from './SkyComponent';
+import PipelineInfoDisplay from './PipelineInfoDisplay';
+import InfiniteGridHelper from './InfiniteGridHelper';
 import './Scene3D.css';
 
 function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
@@ -18,6 +20,8 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
   const initialCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const initialCameraRotation = useRef(new THREE.Euler());
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
+  const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
+  const previousCameraRotation = useRef(new THREE.Euler());
   
   // カメラ位置情報のstate
   const [cameraInfo, setCameraInfo] = useState({
@@ -28,6 +32,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     pitch: 0.0,
     yaw: 0.0
   });
+
+  // 選択されたオブジェクトのstate
+  const [selectedObject, setSelectedObject] = useState(null);
 
   // レイヤー判定関数
   const getLayerFromObject = (obj) => {
@@ -41,92 +48,83 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     return 'other';
   };
 
-  // 無限グリッドの作成
-  const createInfiniteGrid = () => {
-    const gridMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        uSize1: { value: 1 },
-        uSize2: { value: 10 },
-        uColor: { value: new THREE.Color(0x444444) },
-        uDistance: { value: 100 }
-      },
-      vertexShader: `
-        varying vec3 worldPosition;
-        uniform float uDistance;
-        
-        void main() {
-          vec3 pos = position.xzy * uDistance;
-          pos.xz += cameraPosition.xz;
-          worldPosition = pos;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 worldPosition;
-        uniform float uSize1;
-        uniform float uSize2;
-        uniform vec3 uColor;
-        uniform float uDistance;
-        
-        float getGrid(float size) {
-          vec2 r = worldPosition.xz / size;
-          vec2 grid = abs(fract(r - 0.5) - 0.5) / fwidth(r);
-          float line = min(grid.x, grid.y);
-          return 1.0 - min(line, 1.0);
-        }
-        
-        void main() {
-          float d = 1.0 - min(distance(cameraPosition.xz, worldPosition.xz) / uDistance, 1.0);
-          float g1 = getGrid(uSize1);
-          float g2 = getGrid(uSize2);
-          float grid = g1 * 0.3 + g2 * 0.7;
-          gl_FragColor = vec4(uColor, grid * d * 0.5);
-          if (gl_FragColor.a <= 0.0) discard;
-        }
-      `,
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-
-    const gridGeometry = new THREE.PlaneGeometry(1, 1);
-    const gridMesh = new THREE.Mesh(gridGeometry, gridMaterial);
-    gridMesh.rotation.x = -Math.PI / 2;
-    gridMesh.position.y = -0.01;
-    return gridMesh;
-  };
-
   // 3Dオブジェクトの作成
   const createCityObject = (obj) => {
     let geometry;
+    const geom = obj.geometry?.[0];
+    if (!geom) return null;
     
-    switch (obj.type) {
-      case 'cylinder':
-        geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+    // ジオメトリタイプに基づいてThree.jsオブジェクトを作成
+    switch (geom.type) {
+      case 'Point':
+      case 'MultiPoint':
+        geometry = new THREE.SphereGeometry(0.2, 16, 16);
         break;
-      case 'sphere':
-        geometry = new THREE.SphereGeometry(0.5, 32, 32);
+      case 'LineString':
+      case 'MultiLineString':
+      case 'Arc':
+      case 'Spline':
+        // 線は後で処理
+        geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
         break;
-      case 'box':
-        geometry = new THREE.BoxGeometry(1, 1, 1);
+      case 'Circle':
+        geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
+        break;
+      case 'Sphere':
+        geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
+        break;
+      case 'Cylinder':
+        const start = geom.start || [0, 0, 0];
+        const end = geom.end || [0, 1, 0];
+        const height = Math.sqrt(
+          Math.pow(end[0] - start[0], 2) +
+          Math.pow(end[1] - start[1], 2) +
+          Math.pow(end[2] - start[2], 2)
+        );
+        geometry = new THREE.CylinderGeometry(geom.radius || 0.3, geom.radius || 0.3, height, 32);
+        break;
+      case 'Box':
+      case 'Rectangle':
+      case 'Cube':
+        const w = geom.width || geom.size || 1;
+        const h = geom.height || geom.size || 1;
+        const d = geom.depth || geom.size || 1;
+        geometry = new THREE.BoxGeometry(w, h, d);
+        break;
+      case 'Cone':
+        geometry = new THREE.ConeGeometry(geom.base_radius || 0.5, 1, 32);
+        break;
+      case 'Torus':
+        geometry = new THREE.TorusGeometry(geom.major_radius || 0.6, geom.minor_radius || 0.2, 16, 100);
         break;
       default:
-        geometry = new THREE.BoxGeometry(1, 1, 1);
+        geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
     }
 
+    // 色をpipe_kindに基づいて決定
+    const pipeKind = obj.attributes?.pipe_kind || '';
+    let color = '#888888';
+    if (pipeKind.includes('測量')) color = '#2196F3';
+    else if (pipeKind.includes('境界') || pipeKind.includes('線')) color = '#FFC107';
+    else if (pipeKind.includes('管')) color = '#4CAF50';
+    else if (pipeKind.includes('枠')) color = '#9C27B0';
+    else if (pipeKind.includes('ジョイント')) color = '#FF5722';
+
     const material = new THREE.MeshStandardMaterial({
-      color: obj.color,
+      color: color,
       metalness: 0.3,
       roughness: 0.7
     });
 
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(...obj.position);
-    mesh.rotation.set(...obj.rotation);
-    mesh.scale.set(...obj.scale);
+    
+    // 位置を設定
+    const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
+    mesh.position.set(center[0], center[1], center[2]);
+    
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { objectData: obj, originalColor: obj.color };
+    mesh.userData = { objectData: obj, originalColor: color };
 
     return mesh;
   };
@@ -153,8 +151,14 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
       if (clickedObject.userData.objectData) {
-        onObjectClick(clickedObject.userData.objectData);
+        // setSelectedObject(clickedObject.userData.objectData); // 選択されたオブジェクトを設定
+        // if (onObjectClick) {
+        //   onObjectClick(clickedObject.userData.objectData);
+        // }
+        setSelectedObject(clickedObject.userData.objectData);
       }
+    } else {
+      setSelectedObject(null); // オブジェクト以外をクリックした場合はクリア
     }
   };
 
@@ -174,34 +178,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     // シーンの作成
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-
-    // Sky.jsを使った空の作成
-    const sky = new Sky();
-    sky.scale.setScalar(450000);
-    scene.add(sky);
-
-    // 太陽の設定
-    const sun = new THREE.Vector3();
-
-    // Sky shaderのuniformsを設定
-    const skyUniforms = sky.material.uniforms;
-    skyUniforms['turbidity'].value = 10;      // 大気の濁り（0-20）
-    skyUniforms['rayleigh'].value = 2;        // レイリー散乱（0-4）
-    skyUniforms['mieCoefficient'].value = 0.005;  // ミー散乱係数
-    skyUniforms['mieDirectionalG'].value = 0.8;   // ミー散乱の方向性
-
-    // 太陽の位置を設定（仰角と方位角）
-    const elevation = 30;  // 仰角（度）
-    const azimuth = 180;   // 方位角（度）
-
-    const phi = THREE.MathUtils.degToRad(90 - elevation);
-    const theta = THREE.MathUtils.degToRad(azimuth);
-
-    sun.setFromSphericalCoords(1, phi, theta);
-    skyUniforms['sunPosition'].value.copy(sun);
-
-    // 霧の設定
-    scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
+    
+    // 背景をSkyに変更（nullで透明に）
+    scene.background = null;
 
     // カメラの作成
     const camera = new THREE.PerspectiveCamera(
@@ -224,6 +203,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // Sky コンポーネントの初期化（コンテナを渡す）
+    const skyComponent = new SkyComponent(scene, renderer, mountRef.current);
 
     // マウスドラッグでカメラ回転
     let isDragging = false;
@@ -260,28 +242,29 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     renderer.domElement.addEventListener('mouseup', onMouseUp);
     renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // ライティング
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    // ライティングを設定（太陽の位置に合わせて調整）
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
     scene.add(ambientLight);
 
-    const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight1.position.set(10, 20, 10);
-    directionalLight1.castShadow = true;
-    directionalLight1.shadow.mapSize.width = 2048;
-    directionalLight1.shadow.mapSize.height = 2048;
-    scene.add(directionalLight1);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(1, 1, 1);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    scene.add(directionalLight);
+    
+    // 太陽光の色を調整（暖かい色合い）
+    directionalLight.color.setHex(0xfff4e6);
+    
+    // 追加のライトで色をより明るく
+    const additionalLight = new THREE.DirectionalLight(0xffffff, 0.2);
+    additionalLight.position.set(-1, -1, 1);
+    scene.add(additionalLight);
 
-    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
-    directionalLight2.position.set(-10, 10, -10);
-    scene.add(directionalLight2);
-
-    const pointLight = new THREE.PointLight(0xffffff, 0.5);
-    pointLight.position.set(0, 10, 0);
-    scene.add(pointLight);
-
-    // 無限グリッドの追加
-    const grid = createInfiniteGrid();
-    scene.add(grid);
+    // 床（無限地表面 - lightgrey）
+    const infiniteGrid = new InfiniteGridHelper(new THREE.Color('lightgrey'), 10000);
+    infiniteGrid.position.y = 0;
+    scene.add(infiniteGrid);
 
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
@@ -426,8 +409,14 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
         hoveredObjectRef.current = hoveredObject;
       }
 
-      // カメラ位置情報を更新（フレームごとに更新すると重いので、適度に間引く）
-      if (Math.random() < 0.1) { // 約10%の確率で更新（フレームレート間引き）
+      // カメラ位置情報を更新（位置または回転に変化があった場合のみ）
+      const positionChanged = camera.position.distanceTo(previousCameraPosition.current) > 0.001;
+      const rotationChanged = 
+        Math.abs(camera.rotation.x - previousCameraRotation.current.x) > 0.001 ||
+        Math.abs(camera.rotation.y - previousCameraRotation.current.y) > 0.001 ||
+        Math.abs(camera.rotation.z - previousCameraRotation.current.z) > 0.001;
+      
+      if (positionChanged || rotationChanged) {
         const radToDeg = (rad) => ((rad * 180 / Math.PI) % 360).toFixed(1);
         setCameraInfo({
           x: camera.position.x,
@@ -437,6 +426,10 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
           pitch: radToDeg(camera.rotation.x),
           yaw: radToDeg(camera.rotation.y)
         });
+        
+        // 前回の値を更新
+        previousCameraPosition.current.copy(camera.position);
+        previousCameraRotation.current.copy(camera.rotation);
       }
 
       renderer.render(scene, camera);
@@ -455,14 +448,16 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
           mountRef.current.removeChild(renderer.domElement);
         }
       }
+      skyComponent.dispose();
       renderer.domElement.removeEventListener('mousedown', onMouseDown);
       renderer.domElement.removeEventListener('mousemove', onMouseMove);
       renderer.domElement.removeEventListener('mouseup', onMouseUp);
       renderer.dispose();
     };
-  }, [onCameraMove, onObjectClick]);
+  // }, [onCameraMove, onObjectClick]);
+  }, []);
 
-  // オブジェクトの更新
+  // オブジェクトの作成（初回のみ）
   useEffect(() => {
     if (!sceneRef.current || !cityJsonData) return;
 
@@ -475,29 +470,64 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     objectsRef.current = {};
 
     // 新しいオブジェクトを追加
-    cityJsonData.objects?.forEach(obj => {
-      const layer = getLayerFromObject(obj);
-      const isVisible = visibleLayers[layer] !== false;
-
-      if (isVisible) {
-        const mesh = createCityObject(obj);
+    const pipes = cityJsonData.CityObjects?.pipes || cityJsonData.objects || [];
+    pipes.forEach(obj => {
+      const mesh = createCityObject(obj);
+      if (mesh) {
         sceneRef.current.add(mesh);
         objectsRef.current[obj.id] = mesh;
       }
     });
-  }, [cityJsonData, visibleLayers]);
+  }, [cityJsonData]);
+
+  // レイヤーの可視性を更新
+  useEffect(() => {
+    if (!cityJsonData || Object.keys(objectsRef.current).length === 0) return;
+
+    const pipes = cityJsonData.CityObjects?.pipes || cityJsonData.objects || [];
+    pipes.forEach(obj => {
+      const layer = getLayerFromObject(obj);
+      const isVisible = visibleLayers[layer] !== false;
+      const mesh = objectsRef.current[obj.id];
+      
+      if (mesh) {
+        mesh.visible = isVisible;
+      }
+    });
+  }, [visibleLayers, cityJsonData]);
 
   return (
     <div className="scene3d-container">
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
+      
+      {/* 左上の管路情報 */}
+      <div className="pipeline-info-text">
+        ◆管路情報<br />
+        左クリック: 管路情報を表示します<br />
+        ◆離隔計測<br />
+        左Shift+左ドラッグ: 管路間の最近接距離を計測します 中クリック:地表面で折れ線の長さを計測します。<br />
+        ESCキー: 離隔をクリア<br />
+        ◆表示切り替え<br />
+        1: ガイド 2: 背景 5:離隔6: 折れ線 7: 管路8:路面9:地表面<br/> 
+        Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
+        ◆離隔計測結果
+        {/* 選択された管路情報を表示 */}
+        <PipelineInfoDisplay selectedObject={selectedObject} />
+      </div>
+      
+      {/* 左下のカメラ情報 */}
       <div className="camera-info-container">
         <div className="camera-position-info">
           ◆カメラ位置<br />
-          座標:東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m] 向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
+          座標: 東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m]<br/> 
+          向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
         </div>
         <div className="camera-controls-info">
-          カメラ操作<br />
-          W:上 S:下 A:左 D:右 Q:後進 E:前進 右ドラッグ: 向き +左Shiftキー:低速 Y:位置向き初期化 P:向き初期化 O:位置初期化 L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値 U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
+          ◆カメラ操作<br />
+          W: 上 S:下 A:左 D:右 Q:後進 E:前進 右ドラッグ: 向き +左Shiftキー:低速 <br/>
+          Y:位置向き初期化 P:向き初期化 O:位置初期化<br/> 
+          L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br/> 
+          U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
         </div>
       </div>
     </div>

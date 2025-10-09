@@ -4,6 +4,20 @@
   position: relative;
 }
 
+.pipeline-info-text {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  color: white;
+  /* padding: 10px 15px; */
+  border-radius: 5px;
+  font-size: 10px;
+  pointer-events: none;
+  line-height: 1.5;
+  max-width: 800px;
+  z-index: 10;
+}
+
 .camera-info-container {
   position: absolute;
   bottom: 20px;
@@ -15,22 +29,20 @@
 }
 
 .camera-position-info {
-  background: rgba(0, 0, 0, 0.7);
   color: white;
-  padding: 10px 15px;
+  /* padding: 10px 15px; */
   border-radius: 5px;
-  font-size: 13px;
+  font-size: 10px;
   pointer-events: none;
   max-width: 700px;
   line-height: 1.5;
 }
 
 .camera-controls-info {
-  background: rgba(0, 0, 0, 0.7);
   color: white;
-  padding: 10px 15px;
+  /* padding: 10px 15px; */
   border-radius: 5px;
-  font-size: 13px;
+  font-size: 10px;
   pointer-events: none;
   max-width: 700px;
   line-height: 1.5;

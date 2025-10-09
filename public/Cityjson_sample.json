@@ -1,93 +1,413 @@
 {
-  "type": "CityJSON",
-  "version": "1.1",
-  "objects": [
-    {
-      "id": "pipe_001",
-      "type": "cylinder",
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0],
-      "scale": [1, 10, 1],
-      "color": "#2196F3",
-      "attributes": {
-        "name": "水道管A",
-        "material": "鋼管",
-        "diameter": 300,
-        "length": 10,
-        "installDate": "2020-04-15"
+  "CityObjects": {
+    "pipes": [
+      {
+        "id": 1,
+        "type": "Point",
+        "attributes": {
+          "pipe_kind": "測量点",
+          "start_point_depth": 0,
+          "end_point_depth": 0
+        },
+        "geometry": [
+          {
+            "type": "Point",
+            "vertices": [[0, 0, 0]]
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "MultiPoint",
+        "attributes": {
+          "pipe_kind": "多点測量",
+          "start_point_depth": 0,
+          "end_point_depth": 0
+        },
+        "geometry": [
+          {
+            "type": "MultiPoint",
+            "vertices": [[0, 0, 0], [1, 1, 0]]
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "LineString",
+        "attributes": {
+          "pipe_kind": "境界線",
+          "start_point_depth": 0,
+          "end_point_depth": 0.5
+        },
+        "geometry": [
+          {
+            "type": "LineString",
+            "boundaries": [[0, 1]],
+            "vertices": [[0, 0, 0], [1, 0, -0.5]]
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "MultiLineString",
+        "attributes": {
+          "pipe_kind": "多線管路",
+          "start_point_depth": 0.5,
+          "end_point_depth": 1.0
+        },
+        "geometry": [
+          {
+            "type": "MultiLineString",
+            "boundaries": [[[0, 1]], [[1, 2]]],
+            "vertices": [[1, 0, -0.5], [2, 0, -1.0], [2, 1, -1.0]]
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "Arc",
+        "attributes": {
+          "pipe_kind": "アーク管",
+          "start_point_depth": 1.0,
+          "end_point_depth": 1.0
+        },
+        "geometry": [
+          {
+            "type": "Arc",
+            "vertices": [[2, 0, -1.0], [3, 1, -1.0], [4, 0, -1.0]]
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "Ellipse",
+        "attributes": {
+          "pipe_kind": "楕円管",
+          "start_point_depth": 1.0,
+          "end_point_depth": 1.5
+        },
+        "geometry": [
+          {
+            "type": "Ellipse",
+            "center": [5, 0, -1.0],
+            "radius_x": 0.5,
+            "radius_y": 0.3
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "EllipticalArc",
+        "attributes": {
+          "pipe_kind": "楕円アーク管",
+          "start_point_depth": 1.5,
+          "end_point_depth": 2.0
+        },
+        "geometry": [
+          {
+            "type": "EllipticalArc",
+            "vertices": [[5, 0, -1.5], [6, 0.5, -2.0], [7, 0, -2.0]]
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "type": "Spline",
+        "attributes": {
+          "pipe_kind": "スプライン管",
+          "start_point_depth": 2.0,
+          "end_point_depth": 2.5
+        },
+        "geometry": [
+          {
+            "type": "Spline",
+            "vertices": [[7, 0, -2.0], [8, 0.5, -2.3], [9, 1, -2.5]]
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "type": "Polygon",
+        "attributes": {
+          "pipe_kind": "マンホール枠",
+          "start_point_depth": 2.5,
+          "end_point_depth": 2.5
+        },
+        "geometry": [
+          {
+            "type": "Polygon",
+            "boundaries": [[0, 1, 2, 3, 0]],
+            "vertices": [
+              [10, 0, -2.5],
+              [10.5, 0, -2.5],
+              [10.5, 0.5, -2.5],
+              [10, 0.5, -2.5]
+            ]
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "type": "MultiPolygon",
+        "attributes": {
+          "pipe_kind": "複合枠",
+          "start_point_depth": 2.5,
+          "end_point_depth": 3.0
+        },
+        "geometry": [
+          {
+            "type": "MultiPolygon",
+            "boundaries": [
+              [[0, 1, 2, 3, 0]],
+              [[4, 5, 6, 7, 4]]
+            ],
+            "vertices": [
+              [11, 0, -2.5],
+              [11.5, 0, -2.5],
+              [11.5, 0.5, -2.5],
+              [11, 0.5, -2.5],
+              [12, 0, -3.0],
+              [12.5, 0, -3.0],
+              [12.5, 0.5, -3.0],
+              [12, 0.5, -3.0]
+            ]
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "type": "Circle",
+        "attributes": {
+          "pipe_kind": "円形管",
+          "start_point_depth": 3.0,
+          "end_point_depth": 3.0
+        },
+        "geometry": [
+          {
+            "type": "Circle",
+            "center": [13, 0, -3.0],
+            "radius": 0.5
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "type": "Rectangle",
+        "attributes": {
+          "pipe_kind": "矩形管",
+          "start_point_depth": 3.0,
+          "end_point_depth": 3.5
+        },
+        "geometry": [
+          {
+            "type": "Rectangle",
+            "width": 1.0,
+            "height": 0.5,
+            "center": [14, 0, -3.0]
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "type": "Cube",
+        "attributes": {
+          "pipe_kind": "立方管",
+          "start_point_depth": 3.5,
+          "end_point_depth": 4.0
+        },
+        "geometry": [
+          {
+            "type": "Cube",
+            "center": [15, 0, -3.5],
+            "size": 1.0
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "type": "Box",
+        "attributes": {
+          "pipe_kind": "箱型管",
+          "start_point_depth": 4.0,
+          "end_point_depth": 4.5
+        },
+        "geometry": [
+          {
+            "type": "Box",
+            "center": [16, 0, -4.0],
+            "width": 1.0,
+            "height": 0.5,
+            "depth": 0.5
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "type": "Sphere",
+        "attributes": {
+          "pipe_kind": "球体ジョイント",
+          "start_point_depth": 4.5,
+          "end_point_depth": 4.5
+        },
+        "geometry": [
+          {
+            "type": "Sphere",
+            "center": [17, 0, -4.5],
+            "radius": 0.5
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "type": "Cylinder",
+        "attributes": {
+          "pipe_kind": "円筒管",
+          "start_point_depth": 4.5,
+          "end_point_depth": 5.0
+        },
+        "geometry": [
+          {
+            "type": "Cylinder",
+            "start": [18, 0, -4.5],
+            "end": [19, 0, -5.0],
+            "radius": 0.3
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "type": "Cone",
+        "attributes": {
+          "pipe_kind": "円錐管",
+          "start_point_depth": 5.0,
+          "end_point_depth": 5.5
+        },
+        "geometry": [
+          {
+            "type": "Cone",
+            "base": [20, 0, -5.0],
+            "tip": [20, 0, -5.5],
+            "base_radius": 0.5
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "type": "Torus",
+        "attributes": {
+          "pipe_kind": "ドーナツ管",
+          "start_point_depth": 5.5,
+          "end_point_depth": 5.5
+        },
+        "geometry": [
+          {
+            "type": "Torus",
+            "center": [21, 0, -5.5],
+            "major_radius": 0.6,
+            "minor_radius": 0.2
+          }
+        ]
+      },
+      {
+        "id": 19,
+        "type": "Tetrahedron",
+        "attributes": {
+          "pipe_kind": "四面体ジョイント",
+          "start_point_depth": 5.5,
+          "end_point_depth": 6.0
+        },
+        "geometry": [
+          {
+            "type": "Tetrahedron",
+            "vertices": [[22, 0, -5.5], [22.5, 0, -5.8], [22, 0.5, -5.8], [22.3, 0.3, -6.0]]
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "type": "Octahedron",
+        "attributes": {
+          "pipe_kind": "八面体ジョイント",
+          "start_point_depth": 6.0,
+          "end_point_depth": 6.0
+        },
+        "geometry": [
+          {
+            "type": "Octahedron",
+            "center": [23, 0, -6.0],
+            "size": 0.6
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "type": "Extrusion",
+        "attributes": {
+          "pipe_kind": "押出し管",
+          "start_point_depth": 6.0,
+          "end_point_depth": 6.5
+        },
+        "geometry": [
+          {
+            "type": "Extrusion",
+            "base": [[24, 0, -6.0], [24.5, 0, -6.0], [24.5, 0.5, -6.0], [24, 0.5, -6.0]],
+            "height": 0.5
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "type": "Revolution",
+        "attributes": {
+          "pipe_kind": "回転体管",
+          "start_point_depth": 6.5,
+          "end_point_depth": 7.0
+        },
+        "geometry": [
+          {
+            "type": "Revolution",
+            "axis": [25, 0, -6.5],
+            "radius": 0.4,
+            "height": 0.5
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "type": "GeometryCollection",
+        "attributes": {
+          "pipe_kind": "複合構造",
+          "start_point_depth": 7.0,
+          "end_point_depth": 7.0
+        },
+        "geometry": [
+          {
+            "type": "GeometryCollection",
+            "geometries": [
+              {"type": "LineString", "vertices": [[26, 0, -7.0], [26.5, 0, -7.0]]},
+              {"type": "Circle", "center": [26.5, 0, -7.0], "radius": 0.2}
+            ]
+          }
+        ]
+      },
+      {
+        "id": 24,
+        "type": "MultiCylinder",
+        "attributes": {
+          "pipe_kind": "多連管",
+          "start_point_depth": 7.0,
+          "end_point_depth": 7.5
+        },
+        "geometry": [
+          {
+            "type": "MultiCylinder",
+            "cylinders": [
+              {"start": [27, 0, -7.0], "end": [27, 0, -7.5], "radius": 0.3},
+              {"start": [27.5, 0, -7.0], "end": [27.5, 0, -7.5], "radius": 0.3}
+            ]
+          }
+        ]
       }
-    },
-    {
-      "id": "pipe_002",
-      "type": "cylinder",
-      "position": [5, 0, 0],
-      "rotation": [0, 0, 1.57],
-      "scale": [0.8, 8, 0.8],
-      "color": "#8B4513",
-      "attributes": {
-        "name": "下水道管B",
-        "material": "コンクリート",
-        "diameter": 250,
-        "length": 8,
-        "installDate": "2019-08-22"
-      }
-    },
-    {
-      "id": "pipe_003",
-      "type": "cylinder",
-      "position": [-5, 0, 5],
-      "rotation": [1.57, 0, 0],
-      "scale": [0.6, 12, 0.6],
-      "color": "#FFC107",
-      "attributes": {
-        "name": "電線管C",
-        "material": "PVC",
-        "diameter": 150,
-        "length": 12,
-        "installDate": "2021-02-10"
-      }
-    },
-    {
-      "id": "junction_001",
-      "type": "sphere",
-      "position": [0, 5, 0],
-      "rotation": [0, 0, 0],
-      "scale": [1.5, 1.5, 1.5],
-      "color": "#FF5722",
-      "attributes": {
-        "name": "接続点1",
-        "type": "ジョイント",
-        "connections": 3
-      }
-    },
-    {
-      "id": "box_001",
-      "type": "box",
-      "position": [10, 0, 0],
-      "rotation": [0, 0.5, 0],
-      "scale": [2, 3, 2],
-      "color": "#4CAF50",
-      "attributes": {
-        "name": "制御ボックス1",
-        "type": "制御装置",
-        "model": "CB-2000"
-      }
-    },
-    {
-      "id": "pipe_004",
-      "type": "cylinder",
-      "position": [0, -2, -8],
-      "rotation": [0, 0, 0],
-      "scale": [0.5, 6, 0.5],
-      "color": "#9C27B0",
-      "attributes": {
-        "name": "ガス管D",
-        "material": "PE管",
-        "diameter": 100,
-        "length": 6,
-        "installDate": "2022-11-03"
-      }
-    }
-  ]
+    ]
+  }
 }
-

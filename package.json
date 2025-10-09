@@ -4,6 +4,7 @@
   "description": "CityJSON 3D Viewer with React and Three.js",
   "private": true,
   "dependencies": {
+    "lil-gui": "^0.20.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
@@ -33,4 +34,3 @@
     ]
   }
 }
-

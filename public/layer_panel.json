@@ -1,47 +1,15 @@
-{
-  "layers": [
-    {
-      "id": "water",
-      "name": "水道",
-      "color": "#2196F3",
-      "visible": true,
-      "icon": "💧"
-    },
-    {
-      "id": "sewer",
-      "name": "下水道",
-      "color": "#8B4513",
-      "visible": true,
-      "icon": "🚰"
-    },
-    {
-      "id": "electric",
-      "name": "電道",
-      "color": "#FFC107",
-      "visible": true,
-      "icon": "⚡"
-    },
-    {
-      "id": "gas",
-      "name": "ガス",
-      "color": "#9C27B0",
-      "visible": true,
-      "icon": "🔥"
-    },
-    {
-      "id": "junction",
-      "name": "接続点",
-      "color": "#FF5722",
-      "visible": true,
-      "icon": "🔗"
-    },
-    {
-      "id": "control",
-      "name": "制御装置",
-      "color": "#4CAF50",
-      "visible": true,
-      "icon": "📦"
-    }
-  ]
+[
+{"alpha": 1.0,
+"attribute": "pipe_kind",
+"attribute_disp_flag": true,
+"color": "dc143c",
+"discr_class": "\u8a08\u753b(\u64a4\u53bb)",
+"discr_class _disp_flag": true,
+"disp_order": 1,
+"id": 61,
+"region_id": 1,
+"user id": 1,
+"val": "45_NTT\u5e79\u7dda_\u64a4\u53bb",
+"val_disp_flag": true
 }
-
+]

@@ -1,36 +1,16 @@
 {
-  "userId": "user_001",
-  "positions": [
-    {
-      "id": "pos_001",
-      "camera": {
-        "position": [15, 15, 15],
-        "target": [0, 0, 0],
-        "fov": 75
-      },
-      "timestamp": "2025-10-09T10:30:00Z",
-      "description": "全体俯瞰ビュー"
-    },
-    {
-      "id": "pos_002",
-      "camera": {
-        "position": [5, 5, 5],
-        "target": [0, 0, 0],
-        "fov": 75
-      },
-      "timestamp": "2025-10-09T10:35:00Z",
-      "description": "近景ビュー"
-    },
-    {
-      "id": "pos_003",
-      "camera": {
-        "position": [0, 20, 0],
-        "target": [0, 0, 0],
-        "fov": 75
-      },
-      "timestamp": "2025-10-09T10:40:00Z",
-      "description": "真上ビュー"
-    }
-  ]
+"created_at": "2025-10-10",
+"global_position": "Point(139.743974,35.677664)",
+"id": 1,
+"pitch": 0.0,
+"yaw": 0.0,
+"roll": 0.0,
+"reqion_hight": 0.0,
+"region_id": 1,
+"reqion_position": "Point(0,0)",
+"reqion_ref_point": "Point(139.743974,35.677664)",
+"updated_at": "2025-10-10",
+"user_id": 1
 }
+
 
