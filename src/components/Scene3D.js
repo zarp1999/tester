@@ -5,18 +5,22 @@ import PipelineInfoDisplay from './PipelineInfoDisplay';
 import InfiniteGridHelper from './InfiniteGridHelper';
 import './Scene3D.css';
 
-function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
+/**
+ * 3Dシーンコンポーネント
+ * - CityJSONの内容からオブジェクトを生成
+ * - キー/マウスによるカメラ操作
+ * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
+ */
+function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
-  const controlsRef = useRef(null);
   const objectsRef = useRef({});
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const hoveredObjectRef = useRef(null);
   const keysPressed = useRef({});
-  const cameraVelocity = useRef(new THREE.Vector3());
   const initialCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const initialCameraRotation = useRef(new THREE.Euler());
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
@@ -35,6 +39,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
 
   // 選択されたオブジェクトのstate
   const [selectedObject, setSelectedObject] = useState(null);
+  const [showGuides, setShowGuides] = useState(true);
 
   // レイヤー判定関数
   const getLayerFromObject = (obj) => {
@@ -48,85 +53,259 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     return 'other';
   };
 
-  // 3Dオブジェクトの作成
-  const createCityObject = (obj) => {
+  // 3Dオブジェクトの作成（shape/color対応）
+  /**
+   * CityJSONオブジェクトからThree.jsメッシュを生成する。
+   * - shape_type（例: Cylinder）と geometry.type（例: LineString）で分岐
+   * - source_type_id/layer_panel で色・透明度を決定
+   */
+  const createCityObject = (obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap) => {
     let geometry;
     const geom = obj.geometry?.[0];
     if (!geom) return null;
-    
-    // ジオメトリタイプに基づいてThree.jsオブジェクトを作成
-    switch (geom.type) {
-      case 'Point':
-      case 'MultiPoint':
-        geometry = new THREE.SphereGeometry(0.2, 16, 16);
-        break;
-      case 'LineString':
-      case 'MultiLineString':
-      case 'Arc':
-      case 'Spline':
-        // 線は後で処理
-        geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-        break;
-      case 'Circle':
-        geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
-        break;
-      case 'Sphere':
-        geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
-        break;
-      case 'Cylinder':
-        const start = geom.start || [0, 0, 0];
-        const end = geom.end || [0, 1, 0];
-        const height = Math.sqrt(
-          Math.pow(end[0] - start[0], 2) +
-          Math.pow(end[1] - start[1], 2) +
-          Math.pow(end[2] - start[2], 2)
-        );
-        geometry = new THREE.CylinderGeometry(geom.radius || 0.3, geom.radius || 0.3, height, 32);
-        break;
-      case 'Box':
-      case 'Rectangle':
-      case 'Cube':
-        const w = geom.width || geom.size || 1;
-        const h = geom.height || geom.size || 1;
-        const d = geom.depth || geom.size || 1;
-        geometry = new THREE.BoxGeometry(w, h, d);
-        break;
-      case 'Cone':
-        geometry = new THREE.ConeGeometry(geom.base_radius || 0.5, 1, 32);
-        break;
-      case 'Torus':
-        geometry = new THREE.TorusGeometry(geom.major_radius || 0.6, geom.minor_radius || 0.2, 16, 100);
-        break;
-      default:
-        geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+
+    // shape_type名（無ければ CityJSON の geometry.type）
+    const shapeTypeName = shapeTypeMap?.[String(obj.shape_type)] || geom.type;
+
+    // 色スタイルを決定
+    const style = getPipeColorStyle(obj, styleMap, sourceTypeMap);
+    const colorHex = style?.color || '#888888';
+    const opacity = style?.alpha ?? 1;
+    // material 値と layer_panel.json の val を比較して初期表示を決定
+    const initialVisible = (() => {
+      const materialVal = obj?.attributes?.material;
+      if (materialVal == null) return true;
+      const map = materialVisibilityMap || {};
+      if (Object.prototype.hasOwnProperty.call(map, materialVal)) {
+        return map[materialVal];
+      }
+      return true;
+    })();
+
+    // Cylinder + LineString はチューブで管を生成
+    if (shapeTypeName === 'Cylinder' && geom.type === 'LineString' && Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
+      // CityJSONの属性から深度を反映（地表面: y=0、負の深度で下方向）
+      // NOTE: CityJSONのverticesは [x, y, z] 想定だが、既存データ系の整合上、
+      //       水平座標を (x, z) = (vx, vy) として利用し、y を深度で上書きする。
+      const hasDepthAttrs = (
+        obj.attributes &&
+        obj.attributes.start_point_depth != null &&
+        obj.attributes.end_point_depth != null &&
+        Number.isFinite(Number(obj.attributes.start_point_depth)) &&
+        Number.isFinite(Number(obj.attributes.end_point_depth))
+      );
+
+      const points = (() => {
+        if (!hasDepthAttrs) {
+          // 従来通りの座標（x,y,z）を使用
+          return geom.vertices.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+        }
+
+        const startDepth = Number(obj.attributes.start_point_depth);
+        const endDepth = Number(obj.attributes.end_point_depth);
+        const count = geom.vertices.length;
+
+        // 水平位置は (x,z) = (vx, vy) を使用し、垂直は属性の深度を使用
+        return geom.vertices.map(([vx, vy, vz], idx) => {
+          const t = count > 1 ? idx / (count - 1) : 0;
+          const depthY = startDepth + (endDepth - startDepth) * t; // y=深度
+          const worldX = vx;
+          const worldZ = vy; // 緯度/北向きをZに割当て
+          const worldY = depthY; // 地表面下は負
+          return new THREE.Vector3(worldX, worldY, worldZ);
+        });
+      })();
+
+      const curve = new THREE.CatmullRomCurve3(points, false);
+      let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+      // 半径の単位補正（mm想定なら m へ）と最低太さの保証
+      if (radius > 5) radius = radius / 1000;
+      radius = Math.max(radius, 0.05);
+      const tubularSegments = Math.max(20, points.length * 12);
+      geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 16, false);
+    } else {
+      // 既存のタイプに基づいてThree.jsオブジェクトを作成
+      switch (shapeTypeName) {
+        case 'Point':
+        case 'MultiPoint':
+          geometry = new THREE.SphereGeometry(0.2, 16, 16);
+          break;
+        case 'LineString':
+        case 'MultiLineString':
+        case 'Arc':
+        case 'Spline':
+          // 簡易表示
+          geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+          break;
+        case 'Circle':
+          geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
+          break;
+        case 'Sphere':
+          geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
+          break;
+        case 'Cylinder': {
+          const start = geom.start || [0, 0, 0];
+          const end = geom.end || [0, 1, 0];
+          const height = Math.sqrt(
+            Math.pow(end[0] - start[0], 2) +
+            Math.pow(end[1] - start[1], 2) +
+            Math.pow(end[2] - start[2], 2)
+          );
+          const r = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : (geom.radius || 0.3);
+          geometry = new THREE.CylinderGeometry(r, r, height, 32);
+          break;
+        }
+        case 'Box':
+        case 'Rectangle':
+        case 'Cube': {
+          const w = geom.width || geom.size || 1;
+          const h = geom.height || geom.size || 1;
+          const d = geom.depth || geom.size || 1;
+          geometry = new THREE.BoxGeometry(w, h, d);
+          break;
+        }
+        case 'Cone':
+          geometry = new THREE.ConeGeometry(geom.base_radius || 0.5, 1, 32);
+          break;
+        case 'Torus':
+          geometry = new THREE.TorusGeometry(geom.major_radius || 0.6, geom.minor_radius || 0.2, 16, 100);
+          break;
+        default:
+          geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+      }
     }
 
-    // 色をpipe_kindに基づいて決定
-    const pipeKind = obj.attributes?.pipe_kind || '';
-    let color = '#888888';
-    if (pipeKind.includes('測量')) color = '#2196F3';
-    else if (pipeKind.includes('境界') || pipeKind.includes('線')) color = '#FFC107';
-    else if (pipeKind.includes('管')) color = '#4CAF50';
-    else if (pipeKind.includes('枠')) color = '#9C27B0';
-    else if (pipeKind.includes('ジョイント')) color = '#FF5722';
-
     const material = new THREE.MeshStandardMaterial({
-      color: color,
+      color: colorHex,
       metalness: 0.3,
-      roughness: 0.7
+      roughness: 0.7,
+      transparent: opacity < 1,
+      opacity
     });
 
     const mesh = new THREE.Mesh(geometry, material);
-    
-    // 位置を設定
-    const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
-    mesh.position.set(center[0], center[1], center[2]);
+
+    // 位置設定：TubeGeometryはパス点が絶対座標のため移動しない。
+    // それ以外の単一形状は代表点（center/start/先頭頂点）に配置。
+    if (!(shapeTypeName === 'Cylinder' && geom.type === 'LineString')) {
+      const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
+      mesh.position.set(center[0], center[1], center[2]);
+    }
     
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { objectData: obj, originalColor: color };
+    mesh.userData = { objectData: obj, originalColor: colorHex, initialVisible };
+    mesh.visible = initialVisible;
 
     return mesh;
+  };
+
+  // "POINT (x y)" を { x, y } に変換
+  const parsePointWkt = (wkt) => {
+    if (!wkt || typeof wkt !== 'string') return null;
+    const match = /POINT\s*\(\s*([+-]?(?:\d+\.?\d*|\.\d+))\s+([+-]?(?:\d+\.?\d*|\.\d+))\s*\)/i.exec(wkt);
+    if (!match) return null;
+    return { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+  };
+
+  // shape_type.json -> { id: shape_type }
+  const buildShapeTypeMap = (shapeTypesArr) => {
+    const map = {};
+    (shapeTypesArr || []).forEach(({ id, shape_type }) => {
+      map[String(id)] = shape_type;
+    });
+    return map;
+  };
+
+  // source_types.json -> { id: source_type }
+  const buildSourceTypeMap = (sourceTypesArr) => {
+    const map = {};
+    (sourceTypesArr || []).forEach(({ id, source_type }) => {
+      map[String(id)] = source_type;
+    });
+    return map;
+  };
+
+  // layer_panel.json -> { discr_class: { attribute: { val: { color, alpha } } } }
+  const buildStyleMap = (layerPanelArr) => {
+    const styles = {};
+    (layerPanelArr || []).forEach(entry => {
+      const discr = entry.discr_class;
+      const attr = entry.attribute;
+      const val = entry.val;
+      const color = entry.color;
+      const alpha = entry.alpha ?? 1;
+      if (!discr || !attr || !val || !color) return;
+      styles[discr] = styles[discr] || {};
+      styles[discr][attr] = styles[discr][attr] || {};
+      styles[discr][attr][val] = { color: `#${color}`, alpha };
+    });
+    return styles;
+  };
+
+  // 色解決: source_type_id -> source_type -> layer_panel で属性一致の色
+  const getPipeColorStyle = (obj, styleMap, sourceTypeMap) => {
+    const sourceType = sourceTypeMap?.[String(obj.source_type_id)] || null;
+    if (!sourceType) return null;
+    const attrMap = styleMap?.[sourceType];
+    if (!attrMap) return null;
+    for (const attrName of Object.keys(attrMap)) {
+      const v = obj.attributes?.[attrName];
+      if (v != null && attrMap[attrName]?.[v]) {
+        return attrMap[attrName][v];
+      }
+    }
+    return null;
+  };
+
+  // userPositionsが無い場合のカメラ自動フィット
+  const fitCameraToObjects = () => {
+    const camera = cameraRef.current;
+    const scene = sceneRef.current;
+    if (!camera || !scene) return;
+
+    const meshes = Object.values(objectsRef.current);
+    if (meshes.length === 0) return;
+
+    const box = new THREE.Box3();
+    meshes.forEach((m) => {
+      if (m) {
+        m.updateWorldMatrix(true, true);
+        box.expandByObject(m);
+      }
+    });
+
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+
+    const maxSize = Math.max(size.x, size.y, size.z);
+    const fitOffset = 1.4;
+    const fov = camera.fov * (Math.PI / 180);
+    const distance = (maxSize / 2) / Math.tan(fov / 2) * fitOffset;
+
+    const direction = new THREE.Vector3(1, 1, 1).normalize();
+    const newPosition = center.clone().add(direction.multiplyScalar(distance));
+
+    camera.position.copy(newPosition);
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+
+    initialCameraPosition.current.copy(camera.position);
+    initialCameraRotation.current.copy(camera.rotation);
+    previousCameraPosition.current.copy(camera.position);
+    previousCameraRotation.current.copy(camera.rotation);
+    centerPosition.current.copy(center);
+
+    setCameraInfo({
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+      roll: ((camera.rotation.z * 180 / Math.PI) % 360).toFixed(1),
+      pitch: ((camera.rotation.x * 180 / Math.PI) % 360).toFixed(1),
+      yaw: ((camera.rotation.y * 180 / Math.PI) % 360).toFixed(1)
+    });
   };
 
   // マウス移動ハンドラー
@@ -207,6 +386,40 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     // Sky コンポーネントの初期化（コンテナを渡す）
     const skyComponent = new SkyComponent(scene, renderer, mountRef.current);
 
+    // 初期カメラは props.userPositions から設定（App 側でフェッチ済み）
+    if (userPositions) {
+      const regionXY = parsePointWkt(userPositions.reqion_position);
+      const height = Number(userPositions.reqion_hight);
+      const yawDeg = Number(userPositions.yaw);
+      const pitchDeg = Number(userPositions.pitch);
+      const rollDeg = Number(userPositions.roll);
+
+      if (regionXY && Number.isFinite(height)) {
+        camera.position.set(regionXY.x, height, regionXY.y);
+      }
+
+      if ([yawDeg, pitchDeg, rollDeg].some((v) => Number.isFinite(v))) {
+        const yaw = THREE.MathUtils.degToRad(Number.isFinite(yawDeg) ? yawDeg : 0);
+        const pitch = THREE.MathUtils.degToRad(Number.isFinite(pitchDeg) ? pitchDeg : 0);
+        const roll = THREE.MathUtils.degToRad(Number.isFinite(rollDeg) ? rollDeg : 0);
+        camera.rotation.set(pitch, yaw, roll, 'XYZ');
+      }
+
+      initialCameraPosition.current.copy(camera.position);
+      initialCameraRotation.current.copy(camera.rotation);
+      previousCameraPosition.current.copy(camera.position);
+      previousCameraRotation.current.copy(camera.rotation);
+
+      setCameraInfo({
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+        roll: (Number.isFinite(rollDeg) ? rollDeg : 0).toFixed(1),
+        pitch: (Number.isFinite(pitchDeg) ? pitchDeg : 0).toFixed(1),
+        yaw: (Number.isFinite(yawDeg) ? yawDeg : 0).toFixed(1)
+      });
+    }
+
     // マウスドラッグでカメラ回転
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
@@ -223,8 +436,8 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
         const deltaX = event.clientX - previousMousePosition.x;
         const deltaY = event.clientY - previousMousePosition.y;
 
-        camera.rotation.y -= deltaX * 0.005;
-        camera.rotation.x -= deltaY * 0.005;
+        camera.rotation.y -= deltaX * 0.001;
+        camera.rotation.x -= deltaY * 0.001;
 
         // X軸の回転を制限（真上・真下を見すぎない）
         camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -345,6 +558,12 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
         camera.rotation.x = 0;
         camera.position.y = initialCameraPosition.current.y;
         keysPressed.current['r'] = false;
+      }
+
+      // 1: ガイド表示トグル（左上・左下の情報）
+      if (keysPressed.current['1']) {
+        setShowGuides((prev) => !prev);
+        keysPressed.current['1'] = false;
       }
 
       // U:パン重心
@@ -469,29 +688,52 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
     });
     objectsRef.current = {};
 
-    // 新しいオブジェクトを追加
-    const pipes = cityJsonData.CityObjects?.pipes || cityJsonData.objects || [];
-    pipes.forEach(obj => {
-      const mesh = createCityObject(obj);
+    // マップ構築
+    const shapeTypeMap = buildShapeTypeMap(shapeTypes);
+    const sourceTypeMap = buildSourceTypeMap(sourceTypes);
+    const styleMap = buildStyleMap(layerData);
+    // material ごとの初期表示フラグを構築
+    const materialVisibilityMap = (() => {
+      const vis = {};
+      (layerData || []).forEach(entry => {
+        const attr = entry?.attribute;
+        const val = entry?.val;
+        if (attr === 'material' && val != null) {
+          const flag = entry?.val_disp_flag;
+          vis[val] = flag === false ? false : true;
+        }
+      });
+      return vis;
+    })();
+
+    // CityObjects 全体から生成
+    const entries = cityJsonData.CityObjects ? Object.entries(cityJsonData.CityObjects) : [];
+    entries.forEach(([key, obj]) => {
+      const mesh = createCityObject(obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap);
       if (mesh) {
         sceneRef.current.add(mesh);
-        objectsRef.current[obj.id] = mesh;
+        objectsRef.current[key] = mesh;
       }
     });
-  }, [cityJsonData]);
+
+    // userPositions が無ければ自動フィット
+    if (userPositions) {
+      fitCameraToObjects();
+    }
+  }, [cityJsonData, shapeTypes, layerData, sourceTypes]);
 
   // レイヤーの可視性を更新
   useEffect(() => {
     if (!cityJsonData || Object.keys(objectsRef.current).length === 0) return;
 
-    const pipes = cityJsonData.CityObjects?.pipes || cityJsonData.objects || [];
-    pipes.forEach(obj => {
+    const entries = cityJsonData.CityObjects ? Object.entries(cityJsonData.CityObjects) : [];
+    entries.forEach(([key, obj]) => {
       const layer = getLayerFromObject(obj);
-      const isVisible = visibleLayers[layer] !== false;
-      const mesh = objectsRef.current[obj.id];
-      
+      const layerVisible = visibleLayers[layer] !== false;
+      const mesh = objectsRef.current[key];
       if (mesh) {
-        mesh.visible = isVisible;
+        const initialVisible = mesh.userData?.initialVisible ?? true;
+        mesh.visible = layerVisible && initialVisible;
       }
     });
   }, [visibleLayers, cityJsonData]);
@@ -501,35 +743,39 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove }) {
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
       
       {/* 左上の管路情報 */}
-      <div className="pipeline-info-text">
-        ◆管路情報<br />
-        左クリック: 管路情報を表示します<br />
-        ◆離隔計測<br />
-        左Shift+左ドラッグ: 管路間の最近接距離を計測します 中クリック:地表面で折れ線の長さを計測します。<br />
-        ESCキー: 離隔をクリア<br />
-        ◆表示切り替え<br />
-        1: ガイド 2: 背景 5:離隔6: 折れ線 7: 管路8:路面9:地表面<br/> 
-        Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
-        ◆離隔計測結果
-        {/* 選択された管路情報を表示 */}
-        <PipelineInfoDisplay selectedObject={selectedObject} />
-      </div>
+      {showGuides && (
+        <div className="pipeline-info-text">
+          ◆管路情報<br />
+          左クリック: 管路情報を表示します<br />
+          ◆離隔計測<br />
+          左Shift+左ドラッグ: 管路間の最近接距離を計測します 中クリック:地表面で折れ線の長さを計測します。<br />
+          ESCキー: 離隔をクリア<br />
+          ◆表示切り替え<br />
+          1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br/> 
+          Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
+          ◆離隔計測結果
+          {/* 選択された管路情報を表示 */}
+          <PipelineInfoDisplay selectedObject={selectedObject} />
+        </div>
+      )}
       
       {/* 左下のカメラ情報 */}
-      <div className="camera-info-container">
-        <div className="camera-position-info">
-          ◆カメラ位置<br />
-          座標: 東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m]<br/> 
-          向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
+      {showGuides && (
+        <div className="camera-info-container">
+          <div className="camera-position-info">
+            ◆カメラ位置<br />
+            座標: 東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m]<br/> 
+            向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
+          </div>
+          <div className="camera-controls-info">
+            ◆カメラ操作<br />
+            W: 上 S:下 A:左 D:右 Q:後進 E:前進 右ドラッグ: 向き +左Shiftキー:低速 <br/>
+            Y:位置向き初期化 P:向き初期化 O:位置初期化<br/> 
+            L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br/> 
+            U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
+          </div>
         </div>
-        <div className="camera-controls-info">
-          ◆カメラ操作<br />
-          W: 上 S:下 A:左 D:右 Q:後進 E:前進 右ドラッグ: 向き +左Shiftキー:低速 <br/>
-          Y:位置向き初期化 P:向き初期化 O:位置初期化<br/> 
-          L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br/> 
-          U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
-        </div>
-      </div>
+      )}
     </div>
   );
 }

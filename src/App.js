@@ -51,9 +51,13 @@ function App() {
           control: true,
           other: true
         };
-        layers.layers.forEach(layer => {
-          initialVisibility[layer.id] = layer.visible;
-        });
+        if (layers && Array.isArray(layers.layers)) {
+          layers.layers.forEach(layer => {
+            if (layer && typeof layer.visible === 'boolean') {
+              initialVisibility[layer.id] = layer.visible;
+            }
+          });
+        }
         setVisibleLayers(initialVisibility);
       } catch (error) {
         console.error('データの読み込みエラー:', error);
@@ -97,6 +101,10 @@ function App() {
             visibleLayers={visibleLayers}
             onObjectClick={handleObjectClick}
             onCameraMove={handleCameraPositionChange}
+            userPositions={userPositions}
+            shapeTypes={shapeTypes}
+            layerData={layerData}
+            sourceTypes={sourceTypes}
           />
         </div>
       </div>
