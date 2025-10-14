@@ -24,6 +24,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const selectedMeshRef = useRef(null);
   const keysPressed = useRef({});
   const controlsRef = useRef(null);
+  const floorRef = useRef(null);
+  const skyComponentRef = useRef(null);
   const initialCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const initialCameraRotation = useRef(new THREE.Euler());
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
@@ -43,6 +45,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   // 選択されたオブジェクトのstate
   const [selectedObject, setSelectedObject] = useState(null);
   const [showGuides, setShowGuides] = useState(true);
+  const [showPipes, setShowPipes] = useState(true);
+  const [showFloor, setShowFloor] = useState(true);
+  const [showBackground, setShowBackground] = useState(true);
 
 
   // 3Dオブジェクトの作成（shape/color対応）
@@ -122,7 +127,23 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         case 'MultiPoint':
           geometry = new THREE.SphereGeometry(0.2, 16, 16);
           break;
-        case 'LineString':
+        case 'LineString': {
+          // LineStringもCylinderと同じTubeGeometryで実装
+          if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
+            const points = geom.vertices.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+            const curve = new THREE.CatmullRomCurve3(points, false);
+            let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+            // 半径の単位補正（mm想定なら m へ）と最低太さの保証
+            if (radius > 5) radius = radius / 1000;
+            radius = Math.max(radius, 0.05);
+            const tubularSegments = Math.max(20, points.length * 12);
+            geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 16, false);
+          } else {
+            // 頂点が不足している場合は簡易表示
+            geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+          }
+          break;
+        }
         case 'MultiLineString':
         case 'Arc':
         case 'Spline':
@@ -179,7 +200,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     // 位置設定：TubeGeometryはパス点が絶対座標のため移動しない。
     // それ以外の単一形状は代表点（center/start/先頭頂点）に配置。
-    if (!(shapeTypeName === 'Cylinder' && geom.type === 'LineString')) {
+    if (!(shapeTypeName === 'Cylinder' && geom.type === 'LineString') && 
+        !(shapeTypeName === 'LineString' && Array.isArray(geom.vertices) && geom.vertices.length >= 2)) {
       const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
       mesh.position.set(center[0], center[1], center[2]);
     }
@@ -439,6 +461,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     // Sky コンポーネントの初期化（コンテナを渡す）
     const skyComponent = new SkyComponent(scene, renderer, mountRef.current);
+    skyComponentRef.current = skyComponent;
 
     // 初期カメラは props.userPositions から設定（App 側でフェッチ済み）
     if (userPositions) {
@@ -499,6 +522,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const infiniteGrid = new InfiniteGridHelper(new THREE.Color('lightgrey'), 10000);
     infiniteGrid.position.y = 0;
     scene.add(infiniteGrid);
+    floorRef.current = infiniteGrid;
 
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
@@ -600,6 +624,24 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       if (keysPressed.current['1']) {
         setShowGuides((prev) => !prev);
         keysPressed.current['1'] = false;
+      }
+
+      // 7: 管路表示トグル
+      if (keysPressed.current['7']) {
+        setShowPipes((prev) => !prev);
+        keysPressed.current['7'] = false;
+      }
+
+      // 9: 地表面表示トグル
+      if (keysPressed.current['9']) {
+        setShowFloor((prev) => !prev);
+        keysPressed.current['9'] = false;
+      }
+
+      // 2: 背景表示トグル
+      if (keysPressed.current['2']) {
+        setShowBackground((prev) => !prev);
+        keysPressed.current['2'] = false;
       }
 
       // U:パン重心
@@ -768,6 +810,40 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       fitCameraToObjects();
     }
   }, [cityJsonData, shapeTypes, layerData, sourceTypes]);
+
+  // 管路表示制御
+  useEffect(() => {
+    if (!sceneRef.current) return;
+
+    Object.values(objectsRef.current).forEach(mesh => {
+      if (mesh && mesh.userData.objectData) {
+        const obj = mesh.userData.objectData;
+        // 管路オブジェクト（Cylinder + LineString または LineString）の表示制御
+        const isPipe = (
+          (obj.shape_type === 16 && obj.geometry?.[0]?.type === 'LineString') || // Cylinder + LineString
+          (obj.geometry?.[0]?.type === 'LineString') // LineString
+        );
+        
+        if (isPipe) {
+          mesh.visible = showPipes && mesh.userData.initialVisible !== false;
+        }
+      }
+    });
+  }, [showPipes]);
+
+  // 地表面表示制御
+  useEffect(() => {
+    if (floorRef.current) {
+      floorRef.current.visible = showFloor;
+    }
+  }, [showFloor]);
+
+  // 背景表示制御
+  useEffect(() => {
+    if (skyComponentRef.current) {
+      skyComponentRef.current.setBackgroundVisible(showBackground);
+    }
+  }, [showBackground]);
 
 
   return (

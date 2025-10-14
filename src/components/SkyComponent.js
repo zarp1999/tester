@@ -122,6 +122,21 @@ class SkyComponent {
   }
   
   /**
+   * 背景の表示/非表示を制御
+   * @param {boolean} visible - 背景の表示状態
+   */
+  setBackgroundVisible(visible) {
+    if (this.sky) {
+      this.sky.visible = visible;
+    }
+    if (!visible) {
+      this.scene.background = new THREE.Color(0x808080); // グレー
+    } else {
+      this.scene.background = null; // Skyが表示されるので透明のまま
+    }
+  }
+
+  /**
    * クリーンアップ
    */
   dispose() {
