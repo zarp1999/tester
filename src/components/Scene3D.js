@@ -448,15 +448,27 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     controls.enableZoom = true;
     controls.enablePan = true;
     controls.enableRotate = true;
+    
+    // ターゲットの制約を緩和して自由なカメラ移動を実現
+    controls.target.set(0, 0, 0); // 初期ターゲット
+    controls.maxDistance = Infinity; // 最大距離制限を解除
+    controls.minDistance = 0.1;     // 最小距離制限を設定
+    controls.maxPolarAngle = Math.PI; // 垂直回転制限を解除（上下360度回転可能）
+    controls.minPolarAngle = 0;      // 垂直回転制限を解除
+    
     // マウス操作の割当を入れ替え: 左ドラッグ=パン、右ドラッグ=回転
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.PAN,
       MIDDLE: THREE.MOUSE.DOLLY,
       RIGHT: THREE.MOUSE.ROTATE
     };
-    // 左Shiftキーでマウス操作を低速化
-    controls.keyPanSpeed = 7.0;
-    controls.keyRotateSpeed = 2.0;
+    
+    // 操作速度を調整
+    controls.panSpeed = 2.0;      // パン速度を上げる
+    controls.rotateSpeed = 1.0;   // 回転速度
+    controls.zoomSpeed = 1.0;     // ズーム速度
+    controls.keyPanSpeed = 7.0;   // キーボードパン速度
+    controls.keyRotateSpeed = 2.0; // キーボード回転速度
     controlsRef.current = controls;
 
     // Sky コンポーネントの初期化（コンテナを渡す）
@@ -563,17 +575,43 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
       const up = new THREE.Vector3(0, 1, 0);
 
+      let cameraMoved = false;
+
       // W:上 S:下
-      if (keysPressed.current['w']) camera.position.add(up.clone().multiplyScalar(speed));
-      if (keysPressed.current['s']) camera.position.add(up.clone().multiplyScalar(-speed));
+      if (keysPressed.current['w']) {
+        camera.position.add(up.clone().multiplyScalar(speed));
+        cameraMoved = true;
+      }
+      if (keysPressed.current['s']) {
+        camera.position.add(up.clone().multiplyScalar(-speed));
+        cameraMoved = true;
+      }
 
       // A:左 D:右
-      if (keysPressed.current['a']) camera.position.add(right.clone().multiplyScalar(-speed));
-      if (keysPressed.current['d']) camera.position.add(right.clone().multiplyScalar(speed));
+      if (keysPressed.current['a']) {
+        camera.position.add(right.clone().multiplyScalar(-speed));
+        cameraMoved = true;
+      }
+      if (keysPressed.current['d']) {
+        camera.position.add(right.clone().multiplyScalar(speed));
+        cameraMoved = true;
+      }
 
       // Q:後進 E:前進
-      if (keysPressed.current['q']) camera.position.add(forward.clone().multiplyScalar(-speed));
-      if (keysPressed.current['e']) camera.position.add(forward.clone().multiplyScalar(speed));
+      if (keysPressed.current['q']) {
+        camera.position.add(forward.clone().multiplyScalar(-speed));
+        cameraMoved = true;
+      }
+      if (keysPressed.current['e']) {
+        camera.position.add(forward.clone().multiplyScalar(speed));
+        cameraMoved = true;
+      }
+
+      // カメラが移動した場合、ターゲットも動的に更新
+      if (cameraMoved) {
+        const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        controls.target.copy(camera.position.clone().add(direction.multiplyScalar(10)));
+      }
 
       // Y:位置向き初期化
       if (keysPressed.current['y']) {
