@@ -13,7 +13,6 @@ function App() {
   const [sourceTypes, setSourceTypes] = useState(null);
   const [userPositions, setUserPositions] = useState(null);
   const [selectedObject, setSelectedObject] = useState(null);
-  const [visibleLayers, setVisibleLayers] = useState({});
 
   // データの読み込み
   useEffect(() => {
@@ -32,20 +31,6 @@ function App() {
         setShapeTypes(shapes);
         setSourceTypes(sources);
         setUserPositions(positions);
-
-        // レイヤー初期表示は layer_panel.json の discr_class_disp_flag に従う
-        const initialVisibility = {};
-        if (layers && Array.isArray(layers)) {
-          layers.forEach(layer => {
-            if (!layer) return;
-            const layerId = layer.id;
-            const flag = layer.discr_class_disp_flag;
-            if (layerId !== undefined) {
-              initialVisibility[layerId] = !!flag;
-            }
-          });
-        }
-        setVisibleLayers(initialVisibility);
       } catch (error) {
         console.error('データの読み込みエラー:', error);
       }
@@ -58,12 +43,6 @@ function App() {
     setSelectedObject(object);
   };
 
-  const handleLayerToggle = (layerId) => {
-    setVisibleLayers(prev => ({
-      ...prev,
-      [layerId]: !prev[layerId]
-    }));
-  };
 
   const handleCameraPositionChange = (positionData) => {
     console.log('カメラ位置変更:', positionData);
@@ -85,7 +64,6 @@ function App() {
         <div className="scene-container">
           <Scene3D
             cityJsonData={cityJsonData}
-            visibleLayers={visibleLayers}
             onObjectClick={handleObjectClick}
             onCameraMove={handleCameraPositionChange}
             userPositions={userPositions}

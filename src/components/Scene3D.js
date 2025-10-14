@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import InfiniteGridHelper from './InfiniteGridHelper';
@@ -11,7 +12,7 @@ import './Scene3D.css';
  * - キー/マウスによるカメラ操作
  * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
  */
-function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes }) {
+function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -20,7 +21,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const hoveredObjectRef = useRef(null);
+  const selectedMeshRef = useRef(null);
   const keysPressed = useRef({});
+  const controlsRef = useRef(null);
   const initialCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const initialCameraRotation = useRef(new THREE.Euler());
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
@@ -41,17 +44,6 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
   const [selectedObject, setSelectedObject] = useState(null);
   const [showGuides, setShowGuides] = useState(true);
 
-  // レイヤー判定関数
-  const getLayerFromObject = (obj) => {
-    const name = obj.attributes?.name || '';
-    if (name.includes('水道')) return 'water';
-    if (name.includes('下水道')) return 'sewer';
-    if (name.includes('電')) return 'electric';
-    if (name.includes('ガス')) return 'gas';
-    if (name.includes('接続')) return 'junction';
-    if (name.includes('制御')) return 'control';
-    return 'other';
-  };
 
   // 3Dオブジェクトの作成（shape/color対応）
   /**
@@ -101,8 +93,8 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
           return geom.vertices.map(([x, y, z]) => new THREE.Vector3(x, y, z));
         }
 
-        const startDepth = Number(obj.attributes.start_point_depth);
-        const endDepth = Number(obj.attributes.end_point_depth);
+        const startDepth = Number(obj.attributes.start_point_depth / 100);
+        const endDepth = Number(obj.attributes.end_point_depth / 100);
         const count = geom.vertices.length;
 
         // 水平位置は (x,z) = (vx, vy) を使用し、垂直は属性の深度を使用
@@ -194,7 +186,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { objectData: obj, originalColor: colorHex, initialVisible };
+    mesh.userData = { objectData: obj, originalColor: colorHex };
     mesh.visible = initialVisible;
 
     return mesh;
@@ -357,17 +349,31 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
       false
     );
 
+    // 前回の選択ハイライトを解除
+    if (selectedMeshRef.current) {
+      selectedMeshRef.current.material.emissive.setHex(0x000000);
+      selectedMeshRef.current.material.emissiveIntensity = 0;
+      selectedMeshRef.current.material.transparent = false;
+      selectedMeshRef.current.material.opacity = 1.0;
+      selectedMeshRef.current.material.depthWrite = true; // 深度書き込みを有効に戻す
+    }
+
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
       if (clickedObject.userData.objectData) {
-        // setSelectedObject(clickedObject.userData.objectData); // 選択されたオブジェクトを設定
-        // if (onObjectClick) {
-        //   onObjectClick(clickedObject.userData.objectData);
-        // }
         setSelectedObject(clickedObject.userData.objectData);
+        selectedMeshRef.current = clickedObject;
+
+        // 選択ハイライト: 白色の強い発光 + 強力な透明度調整
+        clickedObject.material.emissive.setHex(0xffffff); // 白色
+        clickedObject.material.emissiveIntensity = 0.7;
+        clickedObject.material.transparent = true;
+        clickedObject.material.opacity = 0.1; // 10%の不透明度（90%透明）
+        clickedObject.material.depthWrite = false; // 深度書き込みを無効にして透明効果を強化
       }
     } else {
       setSelectedObject(null); // オブジェクト以外をクリックした場合はクリア
+      selectedMeshRef.current = null;
     }
   };
 
@@ -413,6 +419,24 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
+    // OrbitControlsの初期化
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enableZoom = true;
+    controls.enablePan = true;
+    controls.enableRotate = true;
+    // マウス操作の割当を入れ替え: 左ドラッグ=パン、右ドラッグ=回転
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.PAN,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE
+    };
+    // 左Shiftキーでマウス操作を低速化
+    controls.keyPanSpeed = 7.0;
+    controls.keyRotateSpeed = 2.0;
+    controlsRef.current = controls;
+
     // Sky コンポーネントの初期化（コンテナを渡す）
     const skyComponent = new SkyComponent(scene, renderer, mountRef.current);
 
@@ -450,40 +474,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
       });
     }
 
-    // マウスドラッグでカメラ回転
-    let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-
-    const onMouseDown = (event) => {
-      if (event.button === 2) { // 右クリック
-        isDragging = true;
-        previousMousePosition = { x: event.clientX, y: event.clientY };
-      }
-    };
-
-    const onMouseMove = (event) => {
-      if (isDragging) {
-        const deltaX = event.clientX - previousMousePosition.x;
-        const deltaY = event.clientY - previousMousePosition.y;
-
-        camera.rotation.y -= deltaX * 0.001;
-        camera.rotation.x -= deltaY * 0.001;
-
-        // X軸の回転を制限（真上・真下を見すぎない）
-        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-
-        previousMousePosition = { x: event.clientX, y: event.clientY };
-      }
-    };
-
-    const onMouseUp = () => {
-      isDragging = false;
-    };
-
-    renderer.domElement.addEventListener('mousedown', onMouseDown);
-    renderer.domElement.addEventListener('mousemove', onMouseMove);
-    renderer.domElement.addEventListener('mouseup', onMouseUp);
-    renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+    // OrbitControlsがマウス操作を処理するため、カスタムマウスドラッグは削除
 
     // ライティングを設定（太陽の位置に合わせて調整）
     const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
@@ -528,6 +519,20 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     const animate = () => {
       requestAnimationFrame(animate);
 
+      // 左Shiftキーでマウス操作を低速化
+      if (keysPressed.current['shift']) {
+        controls.panSpeed = 0.5;
+        controls.rotateSpeed = 0.5;
+        controls.zoomSpeed = 0.5;
+      } else {
+        controls.panSpeed = 1.0;
+        controls.rotateSpeed = 1.0;
+        controls.zoomSpeed = 1.0;
+      }
+
+      // OrbitControlsの更新
+      controls.update();
+
       // キーボード操作でカメラ移動
       const speed = keysPressed.current['shift'] ? 0.1 : 0.5; // Shiftで低速
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -550,6 +555,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
       if (keysPressed.current['y']) {
         camera.position.copy(initialCameraPosition.current);
         camera.rotation.copy(initialCameraRotation.current);
+        controls.target.set(0, 0, 0);
         keysPressed.current['y'] = false;
       }
 
@@ -635,25 +641,25 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
         false
       );
 
-      // 前回ホバーしていたオブジェクトをリセット
+      // 前回ホバーしていたオブジェクトをリセット（選択中は除外）
       if (hoveredObjectRef.current) {
-        hoveredObjectRef.current.material.emissive.setHex(0x000000);
-        hoveredObjectRef.current.scale.copy(hoveredObjectRef.current.userData.originalScale);
+        if (hoveredObjectRef.current !== selectedMeshRef.current) {
+          hoveredObjectRef.current.material.emissive.setHex(0x000000);
+          hoveredObjectRef.current.material.emissiveIntensity = 0;
+        }
         document.body.style.cursor = 'default';
         hoveredObjectRef.current = null;
       }
 
-      // 新しくホバーしたオブジェクトを設定
+      // 新しくホバーしたオブジェクトを設定（選択中は除外）
       if (intersects.length > 0) {
         const hoveredObject = intersects[0].object;
-        if (!hoveredObject.userData.originalScale) {
-          hoveredObject.userData.originalScale = hoveredObject.scale.clone();
+        if (hoveredObject !== selectedMeshRef.current) {
+          hoveredObject.material.emissive.setHex(
+            new THREE.Color(hoveredObject.userData.originalColor).getHex()
+          );
+          hoveredObject.material.emissiveIntensity = 0.3;
         }
-        hoveredObject.material.emissive.setHex(
-          new THREE.Color(hoveredObject.userData.originalColor).getHex()
-        );
-        hoveredObject.material.emissiveIntensity = 0.3;
-        hoveredObject.scale.multiplyScalar(1.05);
         document.body.style.cursor = 'pointer';
         hoveredObjectRef.current = hoveredObject;
       }
@@ -698,9 +704,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
         }
       }
       skyComponent.dispose();
-      renderer.domElement.removeEventListener('mousedown', onMouseDown);
-      renderer.domElement.removeEventListener('mousemove', onMouseMove);
-      renderer.domElement.removeEventListener('mouseup', onMouseUp);
+      controls.dispose();
       renderer.dispose();
     };
   // }, [onCameraMove, onObjectClick]);
@@ -717,6 +721,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
       obj.material.dispose();
     });
     objectsRef.current = {};
+
+    // 選択状態もクリア
+    selectedMeshRef.current = null;
 
     // マップ構築
     const shapeTypeMap = buildShapeTypeMap(shapeTypes);
@@ -762,21 +769,6 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     }
   }, [cityJsonData, shapeTypes, layerData, sourceTypes]);
 
-  // レイヤーの可視性を更新
-  useEffect(() => {
-    if (!cityJsonData || Object.keys(objectsRef.current).length === 0) return;
-
-    const entries = cityJsonData.CityObjects ? Object.entries(cityJsonData.CityObjects) : [];
-    entries.forEach(([key, obj]) => {
-      const layer = getLayerFromObject(obj);
-      const layerVisible = visibleLayers[layer] !== false;
-      const mesh = objectsRef.current[key];
-      if (mesh) {
-        const initialVisible = mesh.userData?.initialVisible ?? true;
-        mesh.visible = layerVisible && initialVisible;
-      }
-    });
-  }, [visibleLayers, cityJsonData]);
 
   return (
     <div className="scene3d-container">
@@ -809,7 +801,8 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
           </div>
           <div className="camera-controls-info">
             ◆カメラ操作<br />
-            W: 上 S:下 A:左 D:右 Q:後進 E:前進 右ドラッグ: 向き +左Shiftキー:低速 <br/>
+            マウス左ドラッグ: パン マウス右ドラッグ: 向き（回転） マウスホイール: ズーム<br/>
+            W: 上 S:下 A:左 D:右 Q:後進 E:前進 +左Shiftキー:低速（キー・マウス両方） <br/>
             Y:位置向き初期化 P:向き初期化 O:位置初期化<br/> 
             L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br/> 
             U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
