@@ -13,15 +13,7 @@ function App() {
   const [sourceTypes, setSourceTypes] = useState(null);
   const [userPositions, setUserPositions] = useState(null);
   const [selectedObject, setSelectedObject] = useState(null);
-  const [visibleLayers, setVisibleLayers] = useState({
-    water: true,
-    sewer: true,
-    electric: true,
-    gas: true,
-    junction: true,
-    control: true,
-    other: true
-  });
+  const [visibleLayers, setVisibleLayers] = useState({});
 
   // データの読み込み
   useEffect(() => {
@@ -41,20 +33,15 @@ function App() {
         setSourceTypes(sources);
         setUserPositions(positions);
 
-        // 全レイヤーを初期表示（デフォルト値とマージ）
-        const initialVisibility = {
-          water: true,
-          sewer: true,
-          electric: true,
-          gas: true,
-          junction: true,
-          control: true,
-          other: true
-        };
-        if (layers && Array.isArray(layers.layers)) {
-          layers.layers.forEach(layer => {
-            if (layer && typeof layer.visible === 'boolean') {
-              initialVisibility[layer.id] = layer.visible;
+        // レイヤー初期表示は layer_panel.json の discr_class_disp_flag に従う
+        const initialVisibility = {};
+        if (layers && Array.isArray(layers)) {
+          layers.forEach(layer => {
+            if (!layer) return;
+            const layerId = layer.id;
+            const flag = layer.discr_class_disp_flag;
+            if (layerId !== undefined) {
+              initialVisibility[layerId] = !!flag;
             }
           });
         }

@@ -59,7 +59,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
    * - shape_type（例: Cylinder）と geometry.type（例: LineString）で分岐
    * - source_type_id/layer_panel で色・透明度を決定
    */
-  const createCityObject = (obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap) => {
+  const createCityObject = (obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap, materialValStyleMap, pipeKindValStyleMap) => {
     let geometry;
     const geom = obj.geometry?.[0];
     if (!geom) return null;
@@ -68,7 +68,7 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     const shapeTypeName = shapeTypeMap?.[String(obj.shape_type)] || geom.type;
 
     // 色スタイルを決定
-    const style = getPipeColorStyle(obj, styleMap, sourceTypeMap);
+    const style = getPipeColorStyle(obj, styleMap, sourceTypeMap, materialValStyleMap, pipeKindValStyleMap);
     const colorHex = style?.color || '#888888';
     const opacity = style?.alpha ?? 1;
     // material 値と layer_panel.json の val を比較して初期表示を決定
@@ -243,14 +243,44 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     return styles;
   };
 
+  // layer_panel.json -> attribute 単位（'material' or 'pipe_kind'）で val 直引きのスタイルマップ
+  const buildValStyleMap = (layerPanelArr, targetAttr) => {
+    const map = {};
+    (layerPanelArr || []).forEach(entry => {
+      if (entry?.attribute !== targetAttr) return;
+      const val = entry?.val;
+      const color = entry?.color;
+      const alpha = entry?.alpha ?? 1;
+      if (val == null || !color) return;
+      // 後勝ち/上書き。必要ならここで優先ルールを変更
+      map[val] = { color: `#${color}`, alpha };
+    });
+    return map;
+  };
+
   // 色解決: source_type_id -> source_type -> layer_panel で属性一致の色
-  const getPipeColorStyle = (obj, styleMap, sourceTypeMap) => {
+  const getPipeColorStyle = (obj, styleMap, sourceTypeMap, materialValStyleMap, pipeKindValStyleMap) => {
+    const attrs = obj?.attributes || {};
+    const pipeVal = attrs.pipe_kind;
+    const matVal = attrs.material;
+
+    // 1) pipe_kind の val 直引きを優先
+    if (pipeVal != null && pipeKindValStyleMap && pipeKindValStyleMap[pipeVal]) {
+      return pipeKindValStyleMap[pipeVal];
+    }
+
+    // 2) material の val 直引き
+    if (matVal != null && materialValStyleMap && materialValStyleMap[matVal]) {
+      return materialValStyleMap[matVal];
+    }
+
+    // 3) フォールバック: source_type(discr_class) -> attribute -> val の既存解決
     const sourceType = sourceTypeMap?.[String(obj.source_type_id)] || null;
     if (!sourceType) return null;
     const attrMap = styleMap?.[sourceType];
     if (!attrMap) return null;
     for (const attrName of Object.keys(attrMap)) {
-      const v = obj.attributes?.[attrName];
+      const v = attrs[attrName];
       if (v != null && attrMap[attrName]?.[v]) {
         return attrMap[attrName][v];
       }
@@ -692,7 +722,9 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     const shapeTypeMap = buildShapeTypeMap(shapeTypes);
     const sourceTypeMap = buildSourceTypeMap(sourceTypes);
     const styleMap = buildStyleMap(layerData);
-    // material ごとの初期表示フラグを構築
+    const materialValStyleMap = buildValStyleMap(layerData, 'material');
+    const pipeKindValStyleMap = buildValStyleMap(layerData, 'pipe_kind');
+    // material ごとの初期表示フラグを構築（val_disp_flag を採用）
     const materialVisibilityMap = (() => {
       const vis = {};
       (layerData || []).forEach(entry => {
@@ -709,7 +741,15 @@ function Scene3D({ cityJsonData, visibleLayers, onObjectClick, onCameraMove, use
     // CityObjects 全体から生成
     const entries = cityJsonData.CityObjects ? Object.entries(cityJsonData.CityObjects) : [];
     entries.forEach(([key, obj]) => {
-      const mesh = createCityObject(obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap);
+      const mesh = createCityObject(
+        obj,
+        shapeTypeMap,
+        styleMap,
+        sourceTypeMap,
+        materialVisibilityMap,
+        materialValStyleMap,
+        pipeKindValStyleMap
+      );
       if (mesh) {
         sceneRef.current.add(mesh);
         objectsRef.current[key] = mesh;
