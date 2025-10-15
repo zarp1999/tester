@@ -32,6 +32,12 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
   
+  // ドラッグ機能用のref
+  const isDragging = useRef(false);
+  const dragStartPosition = useRef(new THREE.Vector3());
+  const dragPlane = useRef(new THREE.Plane());
+  const dragIntersection = useRef(new THREE.Vector3());
+  
   // カメラ位置情報のstate
   const [cameraInfo, setCameraInfo] = useState({
     x: 20.0,
@@ -366,6 +372,120 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const rect = mountRef.current.getBoundingClientRect();
     mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // ドラッグ中の処理
+    if (isDragging.current && selectedMeshRef.current) {
+      const camera = cameraRef.current;
+      const raycaster = raycasterRef.current;
+      
+      raycaster.setFromCamera(mouseRef.current, camera);
+      raycaster.ray.intersectPlane(dragPlane.current, dragIntersection.current);
+      
+      if (dragIntersection.current) {
+        const offset = dragIntersection.current.clone().sub(dragStartPosition.current);
+        selectedMeshRef.current.position.add(offset);
+        
+        // ドラッグ開始位置を更新
+        dragStartPosition.current.copy(dragIntersection.current);
+        
+        // 管路情報表示を更新
+        updatePipelineInfoDisplay();
+      }
+    }
+  };
+
+  // マウスダウンハンドラー
+  const handleMouseDown = (event) => {
+    // 左クリックのみ処理
+    if (event.button !== 0) return;
+    
+    // 管路情報表示エリア内のクリックは無視
+    if (event.target.closest('.pipeline-info-display') || 
+        event.target.closest('.pipeline-info-text') ||
+        event.target.closest('.camera-info-container')) {
+      return;
+    }
+
+    // クリックされた要素が3Dシーンのレンダリング領域内かチェック
+    if (event.target !== rendererRef.current?.domElement) {
+      return;
+    }
+
+    const rect = mountRef.current.getBoundingClientRect();
+    mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+    const intersects = raycasterRef.current.intersectObjects(
+      Object.values(objectsRef.current),
+      false
+    );
+
+    if (intersects.length > 0) {
+      const clickedObject = intersects[0].object;
+      if (clickedObject.userData.objectData && clickedObject === selectedMeshRef.current) {
+        // 選択されたオブジェクトをドラッグ開始
+        isDragging.current = true;
+        
+        // ドラッグ平面を設定（カメラの向きに垂直な平面）
+        const camera = cameraRef.current;
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        dragPlane.current.setFromNormalAndCoplanarPoint(
+          cameraDirection.negate(),
+          clickedObject.position
+        );
+        
+        // ドラッグ開始位置を記録
+        raycasterRef.current.ray.intersectPlane(dragPlane.current, dragStartPosition.current);
+        
+        // マウスイベントの伝播を停止
+        event.preventDefault();
+      }
+    }
+  };
+
+  // マウスアップハンドラー
+  const handleMouseUp = (event) => {
+    if (event.button === 0) { // 左クリックのみ
+      isDragging.current = false;
+    }
+  };
+
+  // 管路情報表示を更新する関数
+  const updatePipelineInfoDisplay = () => {
+    if (selectedMeshRef.current && selectedObject) {
+      // 選択されたオブジェクトの位置を更新
+      const updatedObject = { ...selectedObject };
+      
+      // 位置情報を更新
+      if (updatedObject.geometry && updatedObject.geometry[0]) {
+        const geom = updatedObject.geometry[0];
+        const position = selectedMeshRef.current.position;
+        
+        // 中心点を更新
+        if (geom.center) {
+          geom.center = [position.x, position.y, position.z];
+        }
+        
+        // 頂点がある場合は相対位置で更新
+        if (geom.vertices && geom.vertices.length > 0) {
+          const offset = new THREE.Vector3(
+            position.x - (geom.center ? geom.center[0] : 0),
+            position.y - (geom.center ? geom.center[1] : 0),
+            position.z - (geom.center ? geom.center[2] : 0)
+          );
+          
+          geom.vertices = geom.vertices.map(vertex => [
+            vertex[0] + offset.x,
+            vertex[1] + offset.y,
+            vertex[2] + offset.z
+          ]);
+        }
+      }
+      
+      setSelectedObject(updatedObject);
+    }
   };
 
   // クリックハンドラー
@@ -465,8 +585,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     // OrbitControlsの初期化
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
+    controls.enableDamping = false;
+    // controls.dampingFactor = 0.05;
     controls.enableZoom = true;
     controls.enablePan = false; // パン操作を無効化
     controls.enableRotate = true;
@@ -558,6 +678,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
+    mountRef.current.addEventListener('mousedown', handleMouseDown);
+    mountRef.current.addEventListener('mouseup', handleMouseUp);
     mountRef.current.addEventListener('click', handleClick);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -803,6 +925,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       window.removeEventListener('keyup', handleKeyUp);
       if (mountRef.current) {
         mountRef.current.removeEventListener('mousemove', handleMouseMove);
+        mountRef.current.removeEventListener('mousedown', handleMouseDown);
+        mountRef.current.removeEventListener('mouseup', handleMouseUp);
         mountRef.current.removeEventListener('click', handleClick);
         if (renderer.domElement.parentNode === mountRef.current) {
           mountRef.current.removeChild(renderer.domElement);

@@ -23,7 +23,8 @@ class InfiniteGridHelper extends THREE.Mesh {
         
         void main() {
           vec3 pos = position.xzy * uDistance;
-          pos.xz += cameraPosition.xz;
+          // カメラ位置に追従させない（固定位置）
+          // pos.xz += cameraPosition.xz; // この行を削除して振れを解消
           
           worldPosition = pos;
           
