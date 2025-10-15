@@ -3,18 +3,94 @@
   font-size: 10px;
   line-height: 1.5;
   margin-top: 5px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
-.info-row {
-  margin: 3px 0;
+.pipeline-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid #444;
+  font-size: 9px;
 }
 
-.info-label {
+.pipeline-table th {
+  background-color: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 4px 2px;
+  text-align: center;
+  border: 1px solid #666;
   font-weight: bold;
-  margin-right: 5px;
+  font-size: 8px;
 }
 
-.info-value {
-  color: #cccccc;
+.pipeline-table td {
+  padding: 2px;
+  border: 1px solid #444;
+  vertical-align: middle;
+}
+
+.item-label {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #ffffcc;
+  font-weight: bold;
+  text-align: right;
+  padding-right: 4px;
+  width: 30%;
+  font-size: 8px;
+}
+
+.set-value {
+  background-color: rgba(0, 50, 0, 0.6);
+  color: #ccffcc;
+  text-align: center;
+  width: 25%;
+  font-size: 8px;
+}
+
+.input-field {
+  background-color: rgba(0, 0, 0, 0.5);
+  width: 45%;
+  padding: 1px;
+}
+
+.pipeline-input {
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid #666;
+  color: white;
+  padding: 2px;
+  font-size: 8px;
+  border-radius: 2px;
+}
+
+.pipeline-input:focus {
+  outline: none;
+  border-color: #4CAF50;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.pipeline-input::placeholder {
+  color: #999;
+  font-size: 7px;
+}
+
+/* スクロールバーのスタイル */
+.pipeline-info-display::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pipeline-info-display::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.pipeline-info-display::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.pipeline-info-display::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
