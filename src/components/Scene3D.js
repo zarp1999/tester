@@ -79,11 +79,13 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       return true;
     })();
 
-    // Cylinder + LineString はチューブで管を生成
+    // Cylinder + LineString はCylinderGeometryで管を生成（パフォーマンス最適化）
     if (shapeTypeName === 'Cylinder' && geom.type === 'LineString' && Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
-      // CityJSONの属性から深度を反映（地表面: y=0、負の深度で下方向）
-      // NOTE: CityJSONのverticesは [x, y, z] 想定だが、既存データ系の整合上、
-      //       水平座標を (x, z) = (vx, vy) として利用し、y を深度で上書きする。
+      // 始点と終点を使用してCylinderGeometryを作成
+      const start = geom.vertices[0];
+      const end = geom.vertices[geom.vertices.length - 1];
+      
+      // 座標変換（深度属性がある場合）
       const hasDepthAttrs = (
         obj.attributes &&
         obj.attributes.start_point_depth != null &&
@@ -92,34 +94,35 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         Number.isFinite(Number(obj.attributes.end_point_depth))
       );
 
-      const points = (() => {
-        if (!hasDepthAttrs) {
-          // 従来通りの座標（x,y,z）を使用
-          return geom.vertices.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-        }
-
+      let startPoint, endPoint;
+      if (hasDepthAttrs) {
         const startDepth = Number(obj.attributes.start_point_depth / 100);
         const endDepth = Number(obj.attributes.end_point_depth / 100);
-        const count = geom.vertices.length;
+        startPoint = new THREE.Vector3(start[0], startDepth, start[1]);
+        endPoint = new THREE.Vector3(end[0], endDepth, end[1]);
+      } else {
+        startPoint = new THREE.Vector3(start[0], start[1], start[2]);
+        endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+      }
 
-        // 水平位置は (x,z) = (vx, vy) を使用し、垂直は属性の深度を使用
-        return geom.vertices.map(([vx, vy, vz], idx) => {
-          const t = count > 1 ? idx / (count - 1) : 0;
-          const depthY = startDepth + (endDepth - startDepth) * t; // y=深度
-          const worldX = vx;
-          const worldZ = vy; // 緯度/北向きをZに割当て
-          const worldY = depthY; // 地表面下は負
-          return new THREE.Vector3(worldX, worldY, worldZ);
-        });
-      })();
-
-      const curve = new THREE.CatmullRomCurve3(points, false);
+      // 円柱の高さと方向を計算
+      const height = startPoint.distanceTo(endPoint);
       let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
-      // 半径の単位補正（mm想定なら m へ）と最低太さの保証
       if (radius > 5) radius = radius / 1000;
       radius = Math.max(radius, 0.05);
-      const tubularSegments = Math.max(20, points.length * 12);
-      geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 16, false);
+      
+      geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
+      
+      // 円柱を正しい方向に回転
+      const direction = endPoint.clone().sub(startPoint).normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+      const quaternion = new THREE.Quaternion();
+      quaternion.setFromUnitVectors(up, direction);
+      geometry.applyQuaternion(quaternion);
+      
+      // 中心位置を設定
+      const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
+      mesh.position.copy(center);
     } else {
       // 既存のタイプに基づいてThree.jsオブジェクトを作成
       switch (shapeTypeName) {
@@ -128,16 +131,50 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           geometry = new THREE.SphereGeometry(0.2, 16, 16);
           break;
         case 'LineString': {
-          // LineStringもCylinderと同じTubeGeometryで実装
+          // LineStringはCylinderGeometryで実装（パフォーマンス最適化）
           if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
-            const points = geom.vertices.map(([x, y, z]) => new THREE.Vector3(x, y, z));
-            const curve = new THREE.CatmullRomCurve3(points, false);
+            // 始点と終点を使用してCylinderGeometryを作成
+            const start = geom.vertices[0];
+            const end = geom.vertices[geom.vertices.length - 1];
+            
+            // 座標変換（深度属性がある場合）
+            const hasDepthAttrs = (
+              obj.attributes &&
+              obj.attributes.start_point_depth != null &&
+              obj.attributes.end_point_depth != null &&
+              Number.isFinite(Number(obj.attributes.start_point_depth)) &&
+              Number.isFinite(Number(obj.attributes.end_point_depth))
+            );
+
+            let startPoint, endPoint;
+            if (hasDepthAttrs) {
+              const startDepth = Number(obj.attributes.start_point_depth / 100);
+              const endDepth = Number(obj.attributes.end_point_depth / 100);
+              startPoint = new THREE.Vector3(start[0], startDepth, start[1]);
+              endPoint = new THREE.Vector3(end[0], endDepth, end[1]);
+            } else {
+              startPoint = new THREE.Vector3(start[0], start[1], start[2]);
+              endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+            }
+
+            // 円柱の高さと方向を計算
+            const height = startPoint.distanceTo(endPoint);
             let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
-            // 半径の単位補正（mm想定なら m へ）と最低太さの保証
             if (radius > 5) radius = radius / 1000;
             radius = Math.max(radius, 0.05);
-            const tubularSegments = Math.max(20, points.length * 12);
-            geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 16, false);
+            
+            geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
+            
+            // 円柱を正しい方向に回転
+            const direction = endPoint.clone().sub(startPoint).normalize();
+            const up = new THREE.Vector3(0, 1, 0);
+            const quaternion = new THREE.Quaternion();
+            quaternion.setFromUnitVectors(up, direction);
+            geometry.applyQuaternion(quaternion);
+            
+            // 中心位置を設定
+            const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
+            mesh.position.copy(center);
           } else {
             // 頂点が不足している場合は簡易表示
             geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
@@ -198,9 +235,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     const mesh = new THREE.Mesh(geometry, material);
 
-    // 位置設定：TubeGeometryはパス点が絶対座標のため移動しない。
+    // 位置設定：CylinderGeometryでLineStringを処理した場合は既に位置設定済み
     // それ以外の単一形状は代表点（center/start/先頭頂点）に配置。
-    if (!(shapeTypeName === 'Cylinder' && geom.type === 'LineString') && 
+    if (!(shapeTypeName === 'Cylinder' && geom.type === 'LineString' && Array.isArray(geom.vertices) && geom.vertices.length >= 2) && 
         !(shapeTypeName === 'LineString' && Array.isArray(geom.vertices) && geom.vertices.length >= 2)) {
       const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
       mesh.position.set(center[0], center[1], center[2]);
