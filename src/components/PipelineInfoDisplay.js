@@ -48,8 +48,13 @@ function PipelineInfoDisplay({ selectedObject }) {
 
   const pipelineData = getPipelineData();
 
+  // 入力欄のクリックイベントが3Dシーンに伝播しないようにする
+  const handleInputClick = (event) => {
+    event.stopPropagation();
+  };
+
   return (
-    <div className="pipeline-info-display">
+    <div className="pipeline-info-display" onClick={handleInputClick}>
       <table className="pipeline-table">
         <thead>
           <tr>
@@ -69,6 +74,7 @@ function PipelineInfoDisplay({ selectedObject }) {
                   defaultValue={value || ''} 
                   className="pipeline-input"
                   placeholder="入力してください"
+                  onClick={handleInputClick}
                 />
               </td>
             </tr>

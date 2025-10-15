@@ -80,7 +80,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     })();
 
     // LineString系の処理を統合（Cylinder + LineString と LineString）
-    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString') {
+    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
       if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
         // 始点と終点を使用してCylinderGeometryを作成
         const start = geom.vertices[0];
@@ -99,8 +99,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         if (hasDepthAttrs) {
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          startPoint = new THREE.Vector3(start[0], startDepth, start[1]);
-          endPoint = new THREE.Vector3(end[0], endDepth, end[1]);
+          startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
+          endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
         } else {
           startPoint = new THREE.Vector3(start[0], start[1], start[2]);
           endPoint = new THREE.Vector3(end[0], end[1], end[2]);
@@ -108,18 +108,15 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
         // 円柱の高さと方向を計算
         const height = startPoint.distanceTo(endPoint);
-        let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
-        if (radius > 5) radius = radius / 1000;
-        radius = Math.max(radius, 0.05);
-        
+        let radius;
+        if (shapeTypeName === 'Cylinder') {
+          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+          if (radius > 5) radius = radius / 1000;
+          radius = Math.max(radius, 0.05);
+        }else{
+          radius = 0.05;
+        }
         geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
-        
-        // 円柱を正しい方向に回転
-        const direction = endPoint.clone().sub(startPoint).normalize();
-        const up = new THREE.Vector3(0, 1, 0);
-        const quaternion = new THREE.Quaternion();
-        quaternion.setFromUnitVectors(up, direction);
-        geometry.applyQuaternion(quaternion);
       } else {
         // 頂点が不足している場合は簡易表示
         geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
@@ -146,18 +143,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         case 'Sphere':
           geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
           break;
-        case 'Cylinder': {
-          const start = geom.start || [0, 0, 0];
-          const end = geom.end || [0, 1, 0];
-          const height = Math.sqrt(
-            Math.pow(end[0] - start[0], 2) +
-            Math.pow(end[1] - start[1], 2) +
-            Math.pow(end[2] - start[2], 2)
-          );
-          const r = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : (geom.radius || 0.3);
-          geometry = new THREE.CylinderGeometry(r, r, height, 32);
+        case 'Cylinder': 
+          // Cylinderは上記の統合処理で処理されるため、ここでは何もしない
           break;
-        }
         case 'Box':
         case 'Rectangle':
         case 'Cube': {
@@ -189,7 +177,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const mesh = new THREE.Mesh(geometry, material);
 
     // 位置設定：LineString系の統合処理
-    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString') {
+    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
       if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
         // LineString系の位置設定
         const start = geom.vertices[0];
@@ -206,13 +194,18 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         if (hasDepthAttrs) {
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          startPoint = new THREE.Vector3(start[0], startDepth, start[1]);
-          endPoint = new THREE.Vector3(end[0], endDepth, end[1]);
+          startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
+          endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
         } else {
           startPoint = new THREE.Vector3(start[0], start[1], start[2]);
           endPoint = new THREE.Vector3(end[0], end[1], end[2]);
         }
-        
+        // 円柱を正しい方向に回転
+        const direction = endPoint.clone().sub(startPoint).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(up, direction);
+        // geometry.applyQuaternion(quaternion);
         const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
         mesh.position.copy(center);
       }
@@ -377,6 +370,18 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
   // クリックハンドラー
   const handleClick = (event) => {
+    // 管路情報表示エリア内のクリックは無視
+    if (event.target.closest('.pipeline-info-display') || 
+        event.target.closest('.pipeline-info-text') ||
+        event.target.closest('.camera-info-container')) {
+      return;
+    }
+
+    // クリックされた要素が3Dシーンのレンダリング領域内かチェック
+    if (event.target !== rendererRef.current?.domElement) {
+      return;
+    }
+
     const rect = mountRef.current.getBoundingClientRect();
     mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -410,8 +415,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         clickedObject.material.depthWrite = false; // 深度書き込みを無効にして透明効果を強化
       }
     } else {
-      setSelectedObject(null); // オブジェクト以外をクリックした場合はクリア
-      selectedMeshRef.current = null;
+      // オブジェクト以外をクリックしても選択状態は維持
+      // setSelectedObject(null); // この行をコメントアウト
+      // selectedMeshRef.current = null; // この行もコメントアウト
     }
   };
 
@@ -462,7 +468,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.enableZoom = true;
-    controls.enablePan = true;
+    controls.enablePan = false; // パン操作を無効化
     controls.enableRotate = true;
     
     // ターゲットの制約を緩和して自由なカメラ移動を実現
@@ -472,18 +478,16 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     controls.maxPolarAngle = Math.PI; // 垂直回転制限を解除（上下360度回転可能）
     controls.minPolarAngle = 0;      // 垂直回転制限を解除
     
-    // マウス操作の割当を入れ替え: 左ドラッグ=パン、右ドラッグ=回転
+    // マウス操作の割当: 左クリック無効、右ドラッグ=回転、中クリック=ズーム
     controls.mouseButtons = {
-      LEFT: THREE.MOUSE.PAN,
+      LEFT: null, // 左クリックを無効化
       MIDDLE: THREE.MOUSE.DOLLY,
       RIGHT: THREE.MOUSE.ROTATE
     };
     
     // 操作速度を調整
-    controls.panSpeed = 2.0;      // パン速度を上げる
     controls.rotateSpeed = 1.0;   // 回転速度
     controls.zoomSpeed = 1.0;     // ズーム速度
-    controls.keyPanSpeed = 7.0;   // キーボードパン速度
     controls.keyRotateSpeed = 2.0; // キーボード回転速度
     controlsRef.current = controls;
 
@@ -573,11 +577,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
       // 左Shiftキーでマウス操作を低速化
       if (keysPressed.current['shift']) {
-        controls.panSpeed = 0.5;
         controls.rotateSpeed = 0.5;
         controls.zoomSpeed = 0.5;
       } else {
-        controls.panSpeed = 1.0;
         controls.rotateSpeed = 1.0;
         controls.zoomSpeed = 1.0;
       }
@@ -586,7 +588,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       controls.update();
 
       // キーボード操作でカメラ移動
-      const speed = keysPressed.current['shift'] ? 0.1 : 0.5; // Shiftで低速
+      const speed = keysPressed.current['shift'] ? 0.1 : 3; // Shiftで低速
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
       const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
       const up = new THREE.Vector3(0, 1, 0);
@@ -696,6 +698,13 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       if (keysPressed.current['2']) {
         setShowBackground((prev) => !prev);
         keysPressed.current['2'] = false;
+      }
+
+      // ESC: 管路情報表示をクリア
+      if (keysPressed.current['escape']) {
+        setSelectedObject(null);
+        selectedMeshRef.current = null;
+        keysPressed.current['escape'] = false;
       }
 
       // U:パン重心
@@ -875,7 +884,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         // 管路オブジェクト（Cylinder + LineString または LineString）の表示制御
         const isPipe = (
           (obj.shape_type === 16 && obj.geometry?.[0]?.type === 'LineString') || // Cylinder + LineString
-          (obj.geometry?.[0]?.type === 'LineString') // LineString
+          (obj.geometry?.[0]?.type === 'LineString')  // LineString
         );
         
         if (isPipe) {
@@ -909,6 +918,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         <div className="pipeline-info-text">
           ◆管路情報<br />
           左クリック: 管路情報を表示します<br />
+          ESCキー: 管路情報表示をクリア<br />
           ◆離隔計測<br />
           左Shift+左ドラッグ: 管路間の最近接距離を計測します 中クリック:地表面で折れ線の長さを計測します。<br />
           ESCキー: 離隔をクリア<br />
@@ -917,7 +927,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
           ◆離隔計測結果
           {/* 選択された管路情報を表示 */}
-          <PipelineInfoDisplay selectedObject={selectedObject} />
+          {selectedObject && <PipelineInfoDisplay selectedObject={selectedObject} />}
         </div>
       )}
       
@@ -931,7 +941,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           </div>
           <div className="camera-controls-info">
             ◆カメラ操作<br />
-            マウス左ドラッグ: パン マウス右ドラッグ: 向き（回転） マウスホイール: ズーム<br/>
             W: 上 S:下 A:左 D:右 Q:後進 E:前進 +左Shiftキー:低速（キー・マウス両方） <br/>
             Y:位置向き初期化 P:向き初期化 O:位置初期化<br/> 
             L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br/> 

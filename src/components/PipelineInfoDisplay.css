@@ -10,65 +10,63 @@
 .pipeline-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: rgba(0, 0, 0, 0.7);
-  border: 1px solid #444;
   font-size: 9px;
 }
 
 .pipeline-table th {
-  background-color: rgba(0, 0, 0, 0.9);
-  color: white;
+  /* color: white */
   padding: 4px 2px;
   text-align: center;
-  border: 1px solid #666;
+  /* border: 1px solid #666; */
   font-weight: bold;
   font-size: 8px;
 }
 
 .pipeline-table td {
   padding: 2px;
-  border: 1px solid #444;
+  /* border: 1px solid #444; */
   vertical-align: middle;
 }
 
 .item-label {
-  background-color: rgba(0, 0, 0, 0.8);
-  color: #ffffcc;
+  /* background-color: rgba(0, 0, 0, 0.8); */
   font-weight: bold;
-  text-align: right;
+  text-align: left;
   padding-right: 4px;
   width: 30%;
   font-size: 8px;
 }
 
 .set-value {
-  background-color: rgba(0, 50, 0, 0.6);
-  color: #ccffcc;
-  text-align: center;
+  /* background-color: rgba(0, 50, 0, 0.6); */
+  text-align: left;
   width: 25%;
   font-size: 8px;
 }
 
 .input-field {
-  background-color: rgba(0, 0, 0, 0.5);
+  /* background-color: rgba(0, 0, 0, 0.5); */
   width: 45%;
   padding: 1px;
 }
 
 .pipeline-input {
-  width: 100%;
-  background-color: rgba(255, 255, 255, 0.1);
-  border: 1px solid #666;
   color: white;
+  width: 100%;
+  border: none; /* 通常時はボーダーなし */
   padding: 2px;
   font-size: 8px;
-  border-radius: 2px;
+  border-radius: 5px;
+  pointer-events: auto;
+  cursor: text;
+  background-color: transparent;
+  transition: border 0.2s ease; /* スムーズなアニメーション */
 }
 
 .pipeline-input:focus {
   outline: none;
-  border-color: #4CAF50;
   background-color: rgba(255, 255, 255, 0.2);
+  pointer-events: auto;
 }
 
 .pipeline-input::placeholder {
