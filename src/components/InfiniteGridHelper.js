@@ -22,12 +22,13 @@ class InfiniteGridHelper extends THREE.Mesh {
         uniform float uDistance;
         
         void main() {
+          // 地表面を完全に固定位置に設定
           vec3 pos = position.xzy * uDistance;
-          // カメラ位置に追従させない（固定位置）
-          // pos.xz += cameraPosition.xz; // この行を削除して振れを解消
+          pos.y = 0.0; // Y座標を完全に0に固定
           
           worldPosition = pos;
           
+          // モデルビュー変換を適用してカメラからの相対位置を計算
           gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
         }
       `,
@@ -38,8 +39,9 @@ class InfiniteGridHelper extends THREE.Mesh {
         uniform float uDistance;
         
         void main() {
-          // 距離に応じたフェード
-          float d = 1.0 - min(distance(cameraPosition.xz, worldPosition.xz) / uDistance, 1.0);
+          // 距離に応じたフェード（カメラ位置に依存しない安定した計算）
+          float dist = length(worldPosition.xz);
+          float d = 1.0 - min(dist / uDistance, 1.0);
           
           // グリッド線なしで単色表示
           gl_FragColor = vec4(uColor.rgb, pow(d, 3.0) * 0.8);
