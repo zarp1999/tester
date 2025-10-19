@@ -48,6 +48,12 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     yaw: 0.0
   });
 
+
+
+
+
+  
+
   // 選択されたオブジェクトのstate
   const [selectedObject, setSelectedObject] = useState(null);
   const [showGuides, setShowGuides] = useState(true);
@@ -55,6 +61,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const [showFloor, setShowFloor] = useState(true);
   const [showBackground, setShowBackground] = useState(true);
 
+  // オブジェクトの元データを保存（復元機能用）
+  const originalObjectsData = useRef({});
 
   // 3Dオブジェクトの作成（shape/color対応）
   /**
@@ -549,6 +557,242 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     }
   };
 
+  // 登録ボタンのハンドラー（API呼び出し用のスケルトン）
+  const handleRegister = (objectData, inputValues) => {
+    console.log('登録:', objectData, inputValues);
+    // TODO: APIを呼び出してサーバーのデータを更新
+    // 例: await fetch('/api/pipelines/update', { 
+    //   method: 'PUT', 
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ id: objectData.id, changes: inputValues })
+    // });
+    alert('登録機能は後で実装されます');
+  };
+
+  // 複製ボタンのハンドラー
+  const handleDuplicate = (objectData) => {
+    if (!selectedMeshRef.current || !sceneRef.current) return;
+
+    const geom = objectData.geometry?.[0];
+    
+    if (geom && geom.vertices && geom.vertices.length >= 2) {
+      // 新しいIDを生成（タイムスタンプで一意性を保証）
+      const newKey = `${objectData.id || 'pipe'}_copy_${Date.now()}`;
+      
+      // オブジェクトデータをディープコピー（完全に独立したコピーを作成）
+      const newObjectData = JSON.parse(JSON.stringify(objectData));
+      newObjectData.id = newKey;
+      
+      // 選択された管路の真上に配置（Y軸方向にオフセット）
+      // Y軸は高さ方向（上が正、下が負）
+      const verticalOffset = 1.5; // メートル単位（管路の直径に応じて調整可能）
+      
+      if (newObjectData.geometry?.[0]?.vertices) {
+        newObjectData.geometry[0].vertices = newObjectData.geometry[0].vertices.map(v => [
+          v[0],              // X座標はそのまま（東西方向）
+          v[1] + verticalOffset, // Y座標を上に移動（高さ方向）
+          v[2]               // Z座標はそのまま（南北方向）
+        ]);
+      }
+      
+      // centerプロパティがある場合も更新
+      if (newObjectData.geometry?.[0]?.center) {
+        newObjectData.geometry[0].center = [
+          newObjectData.geometry[0].center[0],
+          newObjectData.geometry[0].center[1] + verticalOffset,
+          newObjectData.geometry[0].center[2]
+        ];
+      }
+      
+      // マップ構築（既存の関数を再利用）
+      const shapeTypeMap = buildShapeTypeMap(shapeTypes);
+      const sourceTypeMap = buildSourceTypeMap(sourceTypes);
+      const styleMap = buildStyleMap(layerData);
+      const materialValStyleMap = buildValStyleMap(layerData, 'material');
+      const pipeKindValStyleMap = buildValStyleMap(layerData, 'pipe_kind');
+      const materialVisibilityMap = (() => {
+        const vis = {};
+        (layerData || []).forEach(entry => {
+          const attr = entry?.attribute;
+          const val = entry?.val;
+          if (attr === 'material' && val != null) {
+            const flag = entry?.val_disp_flag;
+            vis[val] = flag === false ? false : true;
+          }
+        });
+        return vis;
+      })();
+      
+      // 新しいメッシュを作成
+      const newMesh = createCityObject(
+        newObjectData,
+        shapeTypeMap,
+        styleMap,
+        sourceTypeMap,
+        materialVisibilityMap,
+        materialValStyleMap,
+        pipeKindValStyleMap
+      );
+      
+      if (newMesh) {
+        sceneRef.current.add(newMesh);
+        objectsRef.current[newKey] = newMesh;
+        originalObjectsData.current[newKey] = JSON.parse(JSON.stringify(newObjectData));
+        
+        // 前の選択を解除
+        if (selectedMeshRef.current) {
+          selectedMeshRef.current.material.emissive.setHex(0x000000);
+          selectedMeshRef.current.material.emissiveIntensity = 0;
+          selectedMeshRef.current.material.transparent = false;
+          selectedMeshRef.current.material.opacity = 1.0;
+          selectedMeshRef.current.material.depthWrite = true;
+          selectedMeshRef.current.material.needsUpdate = true;
+        }
+        
+        // 新しいオブジェクトを選択してハイライト
+        selectedMeshRef.current = newMesh;
+        
+        // 元の色を保存
+        if (!newMesh.userData.originalColor) {
+          newMesh.userData.originalColor = newMesh.material.color.getHex();
+        }
+        
+        // ハイライト設定
+        newMesh.material.emissive.setHex(0xffffff); // 白色の発光
+        newMesh.material.emissiveIntensity = 0.7;
+        newMesh.material.transparent = true;
+        newMesh.material.opacity = 0.1; // 10%の不透明度（90%透明）
+        newMesh.material.depthWrite = false;
+        newMesh.material.needsUpdate = true; // マテリアル更新を強制
+        
+        setSelectedObject(newObjectData);
+      }
+    }
+  };
+
+  // 削除ボタンのハンドラー
+  const handleDelete = (objectData) => {
+    if (!selectedMeshRef.current || !sceneRef.current) return;
+
+    // 確認ダイアログ
+    if (!window.confirm('選択された管路を削除しますか？')) {
+      return;
+    }
+
+    const mesh = selectedMeshRef.current;
+    const objectKey = Object.keys(objectsRef.current).find(
+      key => objectsRef.current[key] === mesh
+    );
+    
+    if (objectKey) {
+      // シーンから削除
+      sceneRef.current.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      
+      // 参照を削除
+      delete objectsRef.current[objectKey];
+      delete originalObjectsData.current[objectKey];
+      
+      // 選択状態をクリア
+      selectedMeshRef.current = null;
+      setSelectedObject(null);
+    }
+  };
+
+  // 追加ボタンのハンドラー（将来実装）
+  const handleAdd = () => {
+    alert('追加機能は後で実装されます');
+  };
+
+  // 復元ボタンのハンドラー
+  const handleRestore = (objectData) => {
+    if (!selectedMeshRef.current) return;
+
+    const mesh = selectedMeshRef.current;
+    const objectKey = Object.keys(objectsRef.current).find(
+      key => objectsRef.current[key] === mesh
+    );
+    
+    if (objectKey && originalObjectsData.current[objectKey]) {
+      const originalData = originalObjectsData.current[objectKey];
+      
+      // メッシュの位置と形状を元に戻す
+      const geom = originalData.geometry?.[0];
+      if (geom && geom.vertices && geom.vertices.length >= 2) {
+        const start = geom.vertices[0];
+        const end = geom.vertices[geom.vertices.length - 1];
+        
+        const startPoint = new THREE.Vector3(start[0], start[1], start[2]);
+        const endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+        
+        const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
+        mesh.position.copy(center);
+        
+        const direction = endPoint.clone().sub(startPoint).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(up, direction);
+        mesh.setRotationFromQuaternion(quaternion);
+        
+        // スケールをリセット
+        mesh.scale.set(1, 1, 1);
+      }
+      
+      // userDataを元に戻す
+      mesh.userData.objectData = JSON.parse(JSON.stringify(originalData));
+      setSelectedObject(JSON.parse(JSON.stringify(originalData)));
+    }
+  };
+
+  // 全て復元ボタンのハンドラー
+  const handleRestoreAll = () => {
+    // 確認ダイアログ
+    if (!window.confirm('すべての管路を元に戻しますか？')) {
+      return;
+    }
+
+    Object.keys(objectsRef.current).forEach(key => {
+      const mesh = objectsRef.current[key];
+      const originalData = originalObjectsData.current[key];
+      
+      if (mesh && originalData) {
+        const geom = originalData.geometry?.[0];
+        if (geom && geom.vertices && geom.vertices.length >= 2) {
+          const start = geom.vertices[0];
+          const end = geom.vertices[geom.vertices.length - 1];
+          
+          const startPoint = new THREE.Vector3(start[0], start[1], start[2]);
+          const endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+          
+          const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
+          mesh.position.copy(center);
+          
+          const direction = endPoint.clone().sub(startPoint).normalize();
+          const up = new THREE.Vector3(0, 1, 0);
+          const quaternion = new THREE.Quaternion();
+          quaternion.setFromUnitVectors(up, direction);
+          mesh.setRotationFromQuaternion(quaternion);
+          
+          // スケールをリセット
+          mesh.scale.set(1, 1, 1);
+        }
+        
+        mesh.userData.objectData = JSON.parse(JSON.stringify(originalData));
+      }
+    });
+    
+    // 選択中のオブジェクトがあれば更新
+    if (selectedMeshRef.current) {
+      const objectKey = Object.keys(objectsRef.current).find(
+        key => objectsRef.current[key] === selectedMeshRef.current
+      );
+      if (objectKey && originalObjectsData.current[objectKey]) {
+        setSelectedObject(JSON.parse(JSON.stringify(originalObjectsData.current[objectKey])));
+      }
+    }
+  };
+
   // キーボード操作
   const handleKeyDown = (event) => {
     // 入力欄にフォーカスがある場合は無視
@@ -1020,8 +1264,47 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       if (mesh) {
         sceneRef.current.add(mesh);
         objectsRef.current[key] = mesh;
+        // 元データを保存（ディープコピー）
+        originalObjectsData.current[key] = JSON.parse(JSON.stringify(obj));
       }
     });
+
+    // オブジェクト作成後に地表面のサイズを更新
+    if (floorRef.current && Object.values(objectsRef.current).length > 0) {
+      const box = new THREE.Box3();
+      Object.values(objectsRef.current).forEach((m) => {
+        if (m) {
+          m.updateWorldMatrix(true, true);
+          box.expandByObject(m);
+        }
+      });
+      
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      
+      // XとZの最大値を取得し、余裕を持たせる（2倍）
+      const maxSize = Math.max(size.x, size.z, 1000) * 2;
+      
+      // 既存の床を削除
+      sceneRef.current.remove(floorRef.current);
+      floorRef.current.geometry.dispose();
+      floorRef.current.material.dispose();
+      
+      // 新しいサイズで床を再作成
+      const floorGeometry = new THREE.PlaneGeometry(maxSize, maxSize);
+      const floorMaterial = new THREE.MeshStandardMaterial({
+        color: '#D3D3D3',
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7
+      });
+      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = 0;
+      floor.receiveShadow = true;
+      sceneRef.current.add(floor);
+      floorRef.current = floor;
+    }
 
     // userPositions が無ければ自動フィット
     if (!userPositions || userPositions.length === 0) {
@@ -1082,7 +1365,18 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
           ◆離隔計測結果
           {/* 選択された管路情報を表示 */}
-          {selectedObject && <PipelineInfoDisplay selectedObject={selectedObject} shapeTypes={shapeTypes} />}
+          {selectedObject && (
+            <PipelineInfoDisplay 
+              selectedObject={selectedObject} 
+              shapeTypes={shapeTypes}
+              onRegister={handleRegister}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              onAdd={handleAdd}
+              onRestore={handleRestore}
+              onRestoreAll={handleRestoreAll}
+            />
+          )}
         </div>
       )}
       

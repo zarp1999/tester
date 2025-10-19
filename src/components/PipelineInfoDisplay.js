@@ -1,13 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import './PipelineInfoDisplay.css';
+import PipelineActionButtons from './PipelineActionButtons';
 
 /**
  * 管路情報表示コンポーネント
  * クリックされた管路オブジェクトの情報をテーブル形式で表示
  */
-function PipelineInfoDisplay({ selectedObject, shapeTypes }) {
+function PipelineInfoDisplay({ 
+  selectedObject, 
+  shapeTypes,
+  onRegister,
+  onDuplicate,
+  onDelete,
+  onAdd,
+  onRestore,
+  onRestoreAll
+}) {
   const [originalValues, setOriginalValues] = useState({}); // 元の値（設定済み）
   const [inputValues, setInputValues] = useState({}); // 入力欄の値
+  const [hasChanges, setHasChanges] = useState(false); // 変更があるかどうか
   
   // selectedObjectが変更された時にoriginalValuesとinputValuesを更新
   useEffect(() => {
@@ -62,6 +73,7 @@ function PipelineInfoDisplay({ selectedObject, shapeTypes }) {
       const pipelineData = getPipelineData();
       setOriginalValues(pipelineData); // 元の値を設定
       setInputValues({}); // 入力欄の値を完全にクリア
+      setHasChanges(false); // 変更フラグをリセット
     }
   }, [selectedObject, shapeTypes, selectedObject?.geometry]);
 
@@ -73,11 +85,55 @@ function PipelineInfoDisplay({ selectedObject, shapeTypes }) {
       ...prev,
       [key]: value
     }));
+    setHasChanges(true); // 変更があったことを記録
   };
 
   // 入力欄のクリックイベントが3Dシーンに伝播しないようにする
   const handleInputClick = (event) => {
     event.stopPropagation();
+  };
+
+  // ボタンハンドラー
+  const handleRegisterClick = () => {
+    if (onRegister) {
+      onRegister(selectedObject, inputValues);
+      setInputValues({});
+      setHasChanges(false);
+    }
+  };
+
+  const handleDuplicateClick = () => {
+    if (onDuplicate) {
+      onDuplicate(selectedObject);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    if (onDelete) {
+      onDelete(selectedObject);
+    }
+  };
+
+  const handleAddClick = () => {
+    if (onAdd) {
+      onAdd();
+    }
+  };
+
+  const handleRestoreClick = () => {
+    if (onRestore) {
+      onRestore(selectedObject);
+      setInputValues({});
+      setHasChanges(false);
+    }
+  };
+
+  const handleRestoreAllClick = () => {
+    if (onRestoreAll) {
+      onRestoreAll();
+      setInputValues({});
+      setHasChanges(false);
+    }
   };
 
   return (
@@ -109,6 +165,15 @@ function PipelineInfoDisplay({ selectedObject, shapeTypes }) {
           ))}
         </tbody>
       </table>
+      <PipelineActionButtons
+        onRegister={handleRegisterClick}
+        onDuplicate={handleDuplicateClick}
+        onDelete={handleDeleteClick}
+        onAdd={handleAddClick}
+        onRestore={handleRestoreClick}
+        onRestoreAll={handleRestoreAllClick}
+        hasChanges={hasChanges}
+      />
     </div>
   );
 }

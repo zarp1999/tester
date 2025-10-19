@@ -13,17 +13,31 @@ function App() {
   const [sourceTypes, setSourceTypes] = useState(null);
   const [userPositions, setUserPositions] = useState(null);
   const [selectedObject, setSelectedObject] = useState(null);
+  const [loadingError, setLoadingError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // データの読み込み
   useEffect(() => {
     const loadData = async () => {
       try {
+        setIsLoading(true);
+        setLoadingError(null);
+
+        // 各ファイルを個別に読み込み、詳細なエラー情報を取得
+        const fetchWithErrorHandling = async (url, name) => {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`${name}の読み込みに失敗しました (ステータス: ${response.status})`);
+          }
+          return response.json();
+        };
+
         const [cityJson, layers, shapes, sources, positions] = await Promise.all([
-          fetch('/Cityjson_sample.json').then(res => res.json()),
-          fetch('/layer_panel.json').then(res => res.json()),
-          fetch('/shape_type.json').then(res => res.json()),
-          fetch('/source_types.json').then(res => res.json()),
-          fetch('/user_pos_1.json').then(res => res.json())
+          fetchWithErrorHandling('/Cityjson_sample.json', 'CityJSONデータ'),
+          fetchWithErrorHandling('/layer_panel.json', 'レイヤーパネルデータ'),
+          fetchWithErrorHandling('/shape_type.json', '形状タイプデータ'),
+          fetchWithErrorHandling('/source_types.json', 'ソースタイプデータ'),
+          fetchWithErrorHandling('/user_pos_1.json', 'ユーザー位置データ')
         ]);
 
         setCityJsonData(cityJson);
@@ -31,8 +45,11 @@ function App() {
         setShapeTypes(shapes);
         setSourceTypes(sources);
         setUserPositions(positions);
+        setIsLoading(false);
       } catch (error) {
         console.error('データの読み込みエラー:', error);
+        setLoadingError(error.message || 'データの読み込みに失敗しました');
+        setIsLoading(false);
       }
     };
 
@@ -49,7 +66,24 @@ function App() {
     // 将来的にはここでAPIを呼び出してデータを取得
   };
 
-  if (!cityJsonData || !layerData) {
+  const handleRetry = () => {
+    window.location.reload();
+  };
+
+  // エラー表示
+  if (loadingError) {
+    return (
+      <div className="loading error">
+        <p className="error-message">{loadingError}</p>
+        <button className="retry-button" onClick={handleRetry}>
+          再読み込み
+        </button>
+      </div>
+    );
+  }
+
+  // ローディング表示
+  if (isLoading || !cityJsonData || !layerData) {
     return (
       <div className="loading">
         <div className="loading-spinner"></div>
