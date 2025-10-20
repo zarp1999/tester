@@ -1,6 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import InfiniteGridHelper from './InfiniteGridHelper';
@@ -31,13 +36,17 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
-  
+
+  // アウトライン表示用のref
+  const composerRef = useRef(null);
+  const outlinePassRef = useRef(null);
+
   // ドラッグ機能用のref
   const isDragging = useRef(false);
   const dragStartPosition = useRef(new THREE.Vector3());
   const dragPlane = useRef(new THREE.Plane());
   const dragIntersection = useRef(new THREE.Vector3());
-  
+
   // カメラ位置情報のstate
   const [cameraInfo, setCameraInfo] = useState({
     x: 20.0,
@@ -52,7 +61,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
 
 
-  
+
 
   // 選択されたオブジェクトのstate
   const [selectedObject, setSelectedObject] = useState(null);
@@ -99,7 +108,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         // 始点と終点を使用してCylinderGeometryを作成
         const start = geom.vertices[0];
         const end = geom.vertices[geom.vertices.length - 1];
-        
+
         // 座標変換（深度属性がある場合）
         const hasDepthAttrs = (
           obj.attributes &&
@@ -127,7 +136,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
           if (radius > 5) radius = radius / 1000;
           radius = Math.max(radius, 0.05);
-        }else{
+        } else {
           radius = 0.05;
         }
         geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
@@ -157,7 +166,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         case 'Sphere':
           geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
           break;
-        case 'Cylinder': 
+        case 'Cylinder':
           // Cylinderは上記の統合処理で処理されるため、ここでは何もしない
           break;
         case 'Box':
@@ -182,10 +191,17 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     const material = new THREE.MeshStandardMaterial({
       color: colorHex,
-      metalness: 0.3,
-      roughness: 0.7,
+      metalness: 0.6,
+      roughness: 0.4,
       transparent: opacity < 1,
-      opacity
+      opacity,
+
+      // // リアルな質感を追加
+      // envMapIntensity: 0.8,  // 環境マッピングの強度
+
+      // // 深度感を出すために微妙な自己発光
+      // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
+      // emissiveIntensity: 0.05
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -203,7 +219,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Number.isFinite(Number(obj.attributes.start_point_depth)) &&
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
-        
+
         let startPoint, endPoint;
         if (hasDepthAttrs) {
           const startDepth = Number(obj.attributes.start_point_depth / 100);
@@ -211,8 +227,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
           endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
         } else {
-          startPoint = new THREE.Vector3(start[0], start[1], start[2]);
-          endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+          // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
+          // Three.js座標系: x, y, z
+          startPoint = new THREE.Vector3(start[0], start[2], start[1]);
+          endPoint = new THREE.Vector3(end[0], end[2], end[1]);
         }
         // 円柱を正しい方向に回転
         const direction = endPoint.clone().sub(startPoint).normalize();
@@ -226,10 +244,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       }
     } else {
       // その他の形状の位置設定
+      // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y) → Three.js: (x, y, z)
       const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
-      mesh.position.set(center[0], center[1], center[2]);
+      mesh.position.set(center[0], center[2], center[1]);
     }
-    
+
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData = { objectData: obj, originalColor: colorHex };
@@ -386,17 +405,17 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     if (isDragging.current && selectedMeshRef.current) {
       const camera = cameraRef.current;
       const raycaster = raycasterRef.current;
-      
+
       raycaster.setFromCamera(mouseRef.current, camera);
       raycaster.ray.intersectPlane(dragPlane.current, dragIntersection.current);
-      
+
       if (dragIntersection.current) {
         const offset = dragIntersection.current.clone().sub(dragStartPosition.current);
         selectedMeshRef.current.position.add(offset);
-        
+
         // ドラッグ開始位置を更新
         dragStartPosition.current.copy(dragIntersection.current);
-        
+
         // 管路情報表示を更新
         updatePipelineInfoDisplay();
       }
@@ -404,16 +423,16 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   };
 
   // マウスダウンハンドラー
-  const handleMouseDown = (event) => {    
+  const handleMouseDown = (event) => {
     // 左クリックのみ処理
     if (event.button !== 0) {
       return;
     }
-    
+
     // 管路情報表示エリア内のクリックは無視
-    if (event.target.closest('.pipeline-info-display') || 
-        event.target.closest('.pipeline-info-text') ||
-        event.target.closest('.camera-info-container')) {
+    if (event.target.closest('.pipeline-info-display') ||
+      event.target.closest('.pipeline-info-text') ||
+      event.target.closest('.camera-info-container')) {
       return;
     }
 
@@ -434,11 +453,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
-      
+
       if (clickedObject.userData.objectData && clickedObject === selectedMeshRef.current) {
         // 選択されたオブジェクトをドラッグ開始
         isDragging.current = true;
-        
+
         // ドラッグ平面を設定（カメラの向きに垂直な平面）
         const camera = cameraRef.current;
         const cameraDirection = new THREE.Vector3();
@@ -447,10 +466,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           cameraDirection.negate(),
           clickedObject.position
         );
-        
+
         // ドラッグ開始位置を記録
         raycasterRef.current.ray.intersectPlane(dragPlane.current, dragStartPosition.current);
-        
+
         // マウスイベントの伝播を停止
         event.preventDefault();
       }
@@ -460,6 +479,45 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   // マウスアップハンドラー
   const handleMouseUp = (event) => {
     if (event.button === 0) { // 左クリックのみ
+      if (isDragging.current && selectedMeshRef.current) {
+        // ドラッグ終了時にオブジェクトデータを更新
+        const currentObjectData = selectedMeshRef.current.userData.objectData;
+        const updatedObject = { ...currentObjectData };
+        const position = selectedMeshRef.current.position;
+
+        // 位置情報を更新
+        if (updatedObject.geometry && updatedObject.geometry[0]) {
+          const geom = { ...updatedObject.geometry[0] }; // 深いコピーを作成
+
+          // 中心点を更新（Three.js座標 → データ座標系に変換）
+          if (geom.center) {
+            geom.center = [position.x, position.z, position.y];
+          }
+
+          // 頂点がある場合は相対位置で更新
+          if (geom.vertices && geom.vertices.length > 0) {
+            const oldCenter = geom.center ? [...geom.center] : [0, 0, 0];
+            const newCenter = [position.x, position.z, position.y];
+            const offset = [
+              newCenter[0] - oldCenter[0],
+              newCenter[1] - oldCenter[1],
+              newCenter[2] - oldCenter[2]
+            ];
+
+            geom.vertices = geom.vertices.map(vertex => [
+              vertex[0] + offset[0],
+              vertex[1] + offset[1],
+              vertex[2] + offset[2]
+            ]);
+          }
+
+          // 更新されたgeometryを設定
+          updatedObject.geometry = [geom];
+        }
+
+        // userDataを更新して永続化
+        selectedMeshRef.current.userData.objectData = updatedObject;
+      }
       isDragging.current = false;
     }
   };
@@ -471,35 +529,38 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       const currentObjectData = selectedMeshRef.current.userData.objectData;
       const updatedObject = { ...currentObjectData };
       const position = selectedMeshRef.current.position;
-      
+
       // 位置情報を更新
       if (updatedObject.geometry && updatedObject.geometry[0]) {
         const geom = { ...updatedObject.geometry[0] }; // 深いコピーを作成
-        
-        // 中心点を更新
+
+        // 中心点を更新（Three.js座標 → データ座標系に変換）
+        // Three.js: (x, y, z) → データ: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
         if (geom.center) {
-          geom.center = [position.x, position.y, position.z];
+          geom.center = [position.x, position.z, position.y];
         }
-        
+
         // 頂点がある場合は相対位置で更新
         if (geom.vertices && geom.vertices.length > 0) {
-          const offset = new THREE.Vector3(
-            position.x - (geom.center ? geom.center[0] : 0),
-            position.y - (geom.center ? geom.center[1] : 0),
-            position.z - (geom.center ? geom.center[2] : 0)
-          );
-          
+          const oldCenter = geom.center ? [...geom.center] : [0, 0, 0];
+          const newCenter = [position.x, position.z, position.y];
+          const offset = [
+            newCenter[0] - oldCenter[0],
+            newCenter[1] - oldCenter[1],
+            newCenter[2] - oldCenter[2]
+          ];
+
           geom.vertices = geom.vertices.map(vertex => [
-            vertex[0] + offset.x,
-            vertex[1] + offset.y,
-            vertex[2] + offset.z
+            vertex[0] + offset[0],
+            vertex[1] + offset[1],
+            vertex[2] + offset[2]
           ]);
         }
-        
+
         // 更新されたgeometryを設定
         updatedObject.geometry = [geom];
       }
-      
+
       setSelectedObject(updatedObject);
     }
   };
@@ -507,9 +568,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   // クリックハンドラー
   const handleClick = (event) => {
     // 管路情報表示エリア内のクリックは無視
-    if (event.target.closest('.pipeline-info-display') || 
-        event.target.closest('.pipeline-info-text') ||
-        event.target.closest('.camera-info-container')) {
+    if (event.target.closest('.pipeline-info-display') ||
+      event.target.closest('.pipeline-info-text') ||
+      event.target.closest('.camera-info-container')) {
       return;
     }
 
@@ -528,32 +589,21 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       false
     );
 
-    // 前回の選択ハイライトを解除
-    if (selectedMeshRef.current) {
-      selectedMeshRef.current.material.emissive.setHex(0x000000);
-      selectedMeshRef.current.material.emissiveIntensity = 0;
-      selectedMeshRef.current.material.transparent = false;
-      selectedMeshRef.current.material.opacity = 1.0;
-      selectedMeshRef.current.material.depthWrite = true; // 深度書き込みを有効に戻す
-    }
-
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
       if (clickedObject.userData.objectData) {
         setSelectedObject(clickedObject.userData.objectData);
         selectedMeshRef.current = clickedObject;
 
-        // 選択ハイライト: 白色の強い発光 + 強力な透明度調整
-        clickedObject.material.emissive.setHex(0xffffff); // 白色
-        clickedObject.material.emissiveIntensity = 0.7;
-        clickedObject.material.transparent = true;
-        clickedObject.material.opacity = 0.1; // 10%の不透明度（90%透明）
-        clickedObject.material.depthWrite = false; // 深度書き込みを無効にして透明効果を強化
+        // アウトライン表示を更新
+        if (outlinePassRef.current) {
+          outlinePassRef.current.selectedObjects = [clickedObject];
+        }
       }
     } else {
       // オブジェクト以外をクリックしても選択状態は維持
-      // setSelectedObject(null); // この行をコメントアウト
-      // selectedMeshRef.current = null; // この行もコメントアウト
+      // setSelectedObject(null);
+      // selectedMeshRef.current = null;
     }
   };
 
@@ -574,36 +624,36 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     if (!selectedMeshRef.current || !sceneRef.current) return;
 
     const geom = objectData.geometry?.[0];
-    
+
     if (geom && geom.vertices && geom.vertices.length >= 2) {
       // 新しいIDを生成（タイムスタンプで一意性を保証）
       const newKey = `${objectData.id || 'pipe'}_copy_${Date.now()}`;
-      
+
       // オブジェクトデータをディープコピー（完全に独立したコピーを作成）
       const newObjectData = JSON.parse(JSON.stringify(objectData));
       newObjectData.id = newKey;
-      
-      // 選択された管路の真上に配置（Y軸方向にオフセット）
-      // Y軸は高さ方向（上が正、下が負）
+
+      // 選択された管路の真上に配置（上下方向にオフセット）
+      // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
       const verticalOffset = 1.5; // メートル単位（管路の直径に応じて調整可能）
-      
+
       if (newObjectData.geometry?.[0]?.vertices) {
         newObjectData.geometry[0].vertices = newObjectData.geometry[0].vertices.map(v => [
-          v[0],              // X座標はそのまま（東西方向）
-          v[1] + verticalOffset, // Y座標を上に移動（高さ方向）
-          v[2]               // Z座標はそのまま（南北方向）
+          v[0],              // 東西はそのまま
+          v[1],              // 南北はそのまま
+          v[2] + verticalOffset  // 上下方向に移動
         ]);
       }
-      
+
       // centerプロパティがある場合も更新
       if (newObjectData.geometry?.[0]?.center) {
         newObjectData.geometry[0].center = [
           newObjectData.geometry[0].center[0],
-          newObjectData.geometry[0].center[1] + verticalOffset,
-          newObjectData.geometry[0].center[2]
+          newObjectData.geometry[0].center[1],
+          newObjectData.geometry[0].center[2] + verticalOffset
         ];
       }
-      
+
       // マップ構築（既存の関数を再利用）
       const shapeTypeMap = buildShapeTypeMap(shapeTypes);
       const sourceTypeMap = buildSourceTypeMap(sourceTypes);
@@ -622,7 +672,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         });
         return vis;
       })();
-      
+
       // 新しいメッシュを作成
       const newMesh = createCityObject(
         newObjectData,
@@ -633,38 +683,20 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         materialValStyleMap,
         pipeKindValStyleMap
       );
-      
+
       if (newMesh) {
         sceneRef.current.add(newMesh);
         objectsRef.current[newKey] = newMesh;
         originalObjectsData.current[newKey] = JSON.parse(JSON.stringify(newObjectData));
-        
-        // 前の選択を解除
-        if (selectedMeshRef.current) {
-          selectedMeshRef.current.material.emissive.setHex(0x000000);
-          selectedMeshRef.current.material.emissiveIntensity = 0;
-          selectedMeshRef.current.material.transparent = false;
-          selectedMeshRef.current.material.opacity = 1.0;
-          selectedMeshRef.current.material.depthWrite = true;
-          selectedMeshRef.current.material.needsUpdate = true;
-        }
-        
-        // 新しいオブジェクトを選択してハイライト
+
+        // 新しいオブジェクトを選択
         selectedMeshRef.current = newMesh;
-        
-        // 元の色を保存
-        if (!newMesh.userData.originalColor) {
-          newMesh.userData.originalColor = newMesh.material.color.getHex();
+
+        // アウトライン表示を更新
+        if (outlinePassRef.current) {
+          outlinePassRef.current.selectedObjects = [newMesh];
         }
-        
-        // ハイライト設定
-        newMesh.material.emissive.setHex(0xffffff); // 白色の発光
-        newMesh.material.emissiveIntensity = 0.7;
-        newMesh.material.transparent = true;
-        newMesh.material.opacity = 0.1; // 10%の不透明度（90%透明）
-        newMesh.material.depthWrite = false;
-        newMesh.material.needsUpdate = true; // マテリアル更新を強制
-        
+
         setSelectedObject(newObjectData);
       }
     }
@@ -683,20 +715,25 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const objectKey = Object.keys(objectsRef.current).find(
       key => objectsRef.current[key] === mesh
     );
-    
+
     if (objectKey) {
       // シーンから削除
       sceneRef.current.remove(mesh);
       mesh.geometry.dispose();
       mesh.material.dispose();
-      
+
       // 参照を削除
       delete objectsRef.current[objectKey];
       delete originalObjectsData.current[objectKey];
-      
+
       // 選択状態をクリア
       selectedMeshRef.current = null;
       setSelectedObject(null);
+
+      // アウトラインをクリア
+      if (outlinePassRef.current) {
+        outlinePassRef.current.selectedObjects = [];
+      }
     }
   };
 
@@ -713,32 +750,51 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const objectKey = Object.keys(objectsRef.current).find(
       key => objectsRef.current[key] === mesh
     );
-    
+
     if (objectKey && originalObjectsData.current[objectKey]) {
       const originalData = originalObjectsData.current[objectKey];
-      
+
       // メッシュの位置と形状を元に戻す
       const geom = originalData.geometry?.[0];
       if (geom && geom.vertices && geom.vertices.length >= 2) {
         const start = geom.vertices[0];
         const end = geom.vertices[geom.vertices.length - 1];
-        
-        const startPoint = new THREE.Vector3(start[0], start[1], start[2]);
-        const endPoint = new THREE.Vector3(end[0], end[1], end[2]);
-        
+
+        // オブジェクト生成時と同じロジックを使用
+        const hasDepthAttrs = (
+          originalData.attributes &&
+          originalData.attributes.start_point_depth != null &&
+          originalData.attributes.end_point_depth != null &&
+          Number.isFinite(Number(originalData.attributes.start_point_depth)) &&
+          Number.isFinite(Number(originalData.attributes.end_point_depth))
+        );
+
+        let startPoint, endPoint;
+        if (hasDepthAttrs) {
+          const startDepth = Number(originalData.attributes.start_point_depth / 100);
+          const endDepth = Number(originalData.attributes.end_point_depth / 100);
+          startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
+          endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
+        } else {
+          // データ座標系 → Three.js座標系に変換
+          // データ: [0]=東西(X), [1]=南北(Z), [2]=上下(Y) → Three.js: (x, y, z)
+          startPoint = new THREE.Vector3(start[0], start[2], start[1]);
+          endPoint = new THREE.Vector3(end[0], end[2], end[1]);
+        }
+
         const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
         mesh.position.copy(center);
-        
+
         const direction = endPoint.clone().sub(startPoint).normalize();
         const up = new THREE.Vector3(0, 1, 0);
         const quaternion = new THREE.Quaternion();
         quaternion.setFromUnitVectors(up, direction);
         mesh.setRotationFromQuaternion(quaternion);
-        
+
         // スケールをリセット
         mesh.scale.set(1, 1, 1);
       }
-      
+
       // userDataを元に戻す
       mesh.userData.objectData = JSON.parse(JSON.stringify(originalData));
       setSelectedObject(JSON.parse(JSON.stringify(originalData)));
@@ -755,33 +811,52 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     Object.keys(objectsRef.current).forEach(key => {
       const mesh = objectsRef.current[key];
       const originalData = originalObjectsData.current[key];
-      
+
       if (mesh && originalData) {
         const geom = originalData.geometry?.[0];
         if (geom && geom.vertices && geom.vertices.length >= 2) {
           const start = geom.vertices[0];
           const end = geom.vertices[geom.vertices.length - 1];
-          
-          const startPoint = new THREE.Vector3(start[0], start[1], start[2]);
-          const endPoint = new THREE.Vector3(end[0], end[1], end[2]);
-          
+
+          // オブジェクト生成時と同じロジックを使用
+          const hasDepthAttrs = (
+            originalData.attributes &&
+            originalData.attributes.start_point_depth != null &&
+            originalData.attributes.end_point_depth != null &&
+            Number.isFinite(Number(originalData.attributes.start_point_depth)) &&
+            Number.isFinite(Number(originalData.attributes.end_point_depth))
+          );
+
+          let startPoint, endPoint;
+          if (hasDepthAttrs) {
+            const startDepth = Number(originalData.attributes.start_point_depth / 100);
+            const endDepth = Number(originalData.attributes.end_point_depth / 100);
+            startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
+            endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
+          } else {
+            // データ座標系 → Three.js座標系に変換
+            // データ: [0]=東西(X), [1]=南北(Z), [2]=上下(Y) → Three.js: (x, y, z)
+            startPoint = new THREE.Vector3(start[0], start[2], start[1]);
+            endPoint = new THREE.Vector3(end[0], end[2], end[1]);
+          }
+
           const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
           mesh.position.copy(center);
-          
+
           const direction = endPoint.clone().sub(startPoint).normalize();
           const up = new THREE.Vector3(0, 1, 0);
           const quaternion = new THREE.Quaternion();
           quaternion.setFromUnitVectors(up, direction);
           mesh.setRotationFromQuaternion(quaternion);
-          
+
           // スケールをリセット
           mesh.scale.set(1, 1, 1);
         }
-        
+
         mesh.userData.objectData = JSON.parse(JSON.stringify(originalData));
       }
     });
-    
+
     // 選択中のオブジェクトがあれば更新
     if (selectedMeshRef.current) {
       const objectKey = Object.keys(objectsRef.current).find(
@@ -817,10 +892,12 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     // シーンの作成
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    
+
     // 背景をSkyに変更（nullで透明に）
     scene.background = null;
 
+    // フォグを追加して深度感を出す
+    scene.fog = new THREE.Fog(0x8B7355, 20, 100);
     // カメラの作成
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -840,6 +917,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // トーンマッピング設定（EffectComposer使用時の色と明るさを正確に）
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -850,21 +932,21 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     controls.enableZoom = true;
     controls.enablePan = false; // パン操作を無効化
     controls.enableRotate = true;
-    
+
     // ターゲットの制約を緩和して自由なカメラ移動を実現
     controls.target.set(0, 0, 0); // 固定ターゲット
     controls.maxDistance = Infinity; // 最大距離制限を解除
     controls.minDistance = 0.1;     // 最小距離制限を設定
     controls.maxPolarAngle = Math.PI; // 垂直回転制限を解除（上下360度回転可能）
     controls.minPolarAngle = 0;      // 垂直回転制限を解除
-    
+
     // マウス操作の割当: 左クリック無効、右ドラッグ=回転、中クリック=ズーム
     controls.mouseButtons = {
       LEFT: null, // 左クリックを無効化
       MIDDLE: THREE.MOUSE.DOLLY,
       RIGHT: THREE.MOUSE.ROTATE
     };
-    
+
     // 操作速度を調整
     controls.rotateSpeed = 0.5;   // 回転速度
     controls.zoomSpeed = 0.5;     // ズーム速度
@@ -920,7 +1002,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     // OrbitControlsがマウス操作を処理するため、カスタムマウスドラッグは削除
 
     // ライティングを設定（太陽の位置に合わせて調整）
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+    const ambientLight = new THREE.AmbientLight(0x808080, 1.4);
     scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -929,10 +1011,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     scene.add(directionalLight);
-    
+
     // 太陽光の色を調整（暖かい色合い）
     directionalLight.color.setHex(0xfff4e6);
-    
+
     // 追加のライトで色をより明るく
     const additionalLight = new THREE.DirectionalLight(0xffffff, 0.2);
     additionalLight.position.set(-1, -1, 1);
@@ -953,6 +1035,50 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     scene.add(floor);
     floorRef.current = floor;
 
+    // 土壌の断面を追加（オプション - より3D感）
+    const soilDepth = 10; // 土壌の深さ（メートル）
+    const soilGeometry = new THREE.BoxGeometry(10000, soilDepth, 10000);
+    const soilMaterial = new THREE.MeshStandardMaterial({
+      color: '#6B5444',      // 濃い土の色
+      transparent: true,
+      opacity: 0.3,          // かなり透明にして管路が見える
+      side: THREE.DoubleSide,
+      roughness: 0.95,
+      metalness: 0.0,
+      depthWrite: false      // 深度バッファに書き込まない
+    });
+    const soil = new THREE.Mesh(soilGeometry, soilMaterial);
+    soil.position.y = -soilDepth / 2; // Y=0より下に配置
+    soil.receiveShadow = true;
+    scene.add(soil);
+    // EffectComposerとOutlinePassの設定
+    const composer = new EffectComposer(renderer);
+
+    // 基本レンダリングパス
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    // アウトラインパス
+    const outlinePass = new OutlinePass(
+      new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
+      scene,
+      camera
+    );
+    outlinePass.edgeStrength = 3.0; // アウトラインの強度
+    outlinePass.edgeGlow = 0.5; // アウトラインの発光
+    outlinePass.edgeThickness = 2.0; // アウトラインの太さ
+    outlinePass.pulsePeriod = 0; // 脈動効果なし
+    outlinePass.visibleEdgeColor.set('#ffff00'); // 黄色
+    outlinePass.hiddenEdgeColor.set('#ffaa00'); // オレンジ色
+    composer.addPass(outlinePass);
+
+    // ガンマ補正パス（色と明るさを正確にレンダリング）
+    const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
+    composer.addPass(gammaCorrectionPass);
+
+    composerRef.current = composer;
+    outlinePassRef.current = outlinePass;
+
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
     mountRef.current.addEventListener('mousedown', handleMouseDown);
@@ -967,6 +1093,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      composer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
     };
     window.addEventListener('resize', handleResize);
 
@@ -1024,7 +1151,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         cameraMoved = true;
       }
 
-      // カメラ移動時の処理（ターゲットは固定のまま）
+      // カメラが移動した場合、ターゲットも動的に更新
+      if (cameraMoved) {
+        const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        controls.target.copy(camera.position.clone().add(direction.multiplyScalar(10)));
+      }
 
       // Y:位置向き初期化
       if (keysPressed.current['y']) {
@@ -1099,6 +1230,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       if (keysPressed.current['escape']) {
         setSelectedObject(null);
         selectedMeshRef.current = null;
+        // アウトラインをクリア
+        if (outlinePassRef.current) {
+          outlinePassRef.current.selectedObjects = [];
+        }
         keysPressed.current['escape'] = false;
       }
 
@@ -1166,12 +1301,12 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
       // カメラ位置情報を更新（位置または回転に変化があった場合のみ）
       const positionChanged = camera.position.distanceTo(previousCameraPosition.current) > 0.001;
-      const rotationChanged = 
+      const rotationChanged =
         Math.abs(camera.rotation.x - previousCameraRotation.current.x) > 0.01 ||
         Math.abs(camera.rotation.y - previousCameraRotation.current.y) > 0.01 ||
         Math.abs(camera.rotation.z - previousCameraRotation.current.z) > 0.01;
-      
-      
+
+
       if (positionChanged || rotationChanged) {
         const radToDeg = (rad) => ((rad * 180 / Math.PI) % 360).toFixed(1);
         const animationCameraInfo = {
@@ -1183,13 +1318,14 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           yaw: radToDeg(camera.rotation.y)
         };
         setCameraInfo(animationCameraInfo);
-        
+
         // 前回の値を更新
         previousCameraPosition.current.copy(camera.position);
         previousCameraRotation.current.copy(camera.rotation);
       }
 
-      renderer.render(scene, camera);
+      // Composerでレンダリングしてアウトラインエフェクトを適用
+      composer.render();
     };
     animate();
 
@@ -1211,7 +1347,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       controls.dispose();
       renderer.dispose();
     };
-  // }, [onCameraMove, onObjectClick]);
+    // }, [onCameraMove, onObjectClick]);
   }, [userPositions]);
 
   // オブジェクトの作成（初回のみ）
@@ -1278,25 +1414,26 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           box.expandByObject(m);
         }
       });
-      
+
       const size = new THREE.Vector3();
       box.getSize(size);
-      
+
       // XとZの最大値を取得し、余裕を持たせる（2倍）
       const maxSize = Math.max(size.x, size.z, 1000) * 2;
-      
+
       // 既存の床を削除
       sceneRef.current.remove(floorRef.current);
       floorRef.current.geometry.dispose();
       floorRef.current.material.dispose();
-      
+
       // 新しいサイズで床を再作成
       const floorGeometry = new THREE.PlaneGeometry(maxSize, maxSize);
       const floorMaterial = new THREE.MeshStandardMaterial({
-        color: '#D3D3D3',
+        color: '#8B7355',
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.7
+        opacity: 0.8,
+        roughness: 0.7
       });
       const floor = new THREE.Mesh(floorGeometry, floorMaterial);
       floor.rotation.x = -Math.PI / 2;
@@ -1324,7 +1461,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           (obj.shape_type === 16 && obj.geometry?.[0]?.type === 'LineString') || // Cylinder + LineString
           (obj.geometry?.[0]?.type === 'LineString')  // LineString
         );
-        
+
         if (isPipe) {
           mesh.visible = showPipes && mesh.userData.initialVisible !== false;
         }
@@ -1350,7 +1487,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   return (
     <div className="scene3d-container">
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
-      
+
       {/* 左上の管路情報 */}
       {showGuides && (
         <div className="pipeline-info-text">
@@ -1361,13 +1498,13 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           左Shift+左ドラッグ: 管路間の最近接距離を計測します 中クリック:地表面で折れ線の長さを計測します。<br />
           ESCキー: 離隔をクリア<br />
           ◆表示切り替え<br />
-          1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br/> 
+          1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br />
           Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
           ◆離隔計測結果
           {/* 選択された管路情報を表示 */}
           {selectedObject && (
-            <PipelineInfoDisplay 
-              selectedObject={selectedObject} 
+            <PipelineInfoDisplay
+              selectedObject={selectedObject}
               shapeTypes={shapeTypes}
               onRegister={handleRegister}
               onDuplicate={handleDuplicate}
@@ -1379,20 +1516,20 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           )}
         </div>
       )}
-      
+
       {/* 左下のカメラ情報 */}
       {showGuides && (
         <div className="camera-info-container">
           <div className="camera-position-info">
             ◆カメラ位置<br />
-            座標: 東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m]<br/> 
+            座標: 東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m]<br />
             向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
           </div>
           <div className="camera-controls-info">
             ◆カメラ操作<br />
-            W: 上 S:下 A:左 D:右 Q:後進 E:前進 +左Shiftキー:低速（キー・マウス両方） <br/>
-            Y:位置向き初期化 P:向き初期化 O:位置初期化<br/> 
-            L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br/> 
+            W: 上 S:下 A:左 D:右 Q:後進 E:前進 +左Shiftキー:低速（キー・マウス両方） <br />
+            Y:位置向き初期化 P:向き初期化 O:位置初期化<br />
+            L:パン北向き I:チルト水平 T:チルト真下 R:チルト水平・高さ初期値<br />
             U:パン重心 J:位置重心 H:重心向き後進 G:重心向き前進 K:重心真下
           </div>
         </div>

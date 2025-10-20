@@ -1,24 +1,22 @@
 .pipeline-info-display {
   color: white;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
-  margin-top: 5px;
-  max-height: 400px;
+  margin-top: 50px;
+  max-height: 100%;
   overflow-y: auto;
 }
 
 .pipeline-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 9px;
-  table-layout: fixed;
+  font-size: 13px;
 }
 
 .pipeline-table th {
-  padding: 4px 2px;
   text-align: center;
   font-weight: bold;
-  font-size: 8px;
+  font-size: 13px;
   word-wrap: break-word;
 }
 
@@ -34,13 +32,13 @@
   text-align: left;
   padding-right: 4px;
   width: 30%;
-  font-size: 8px;
+  font-size: 13px;
 }
 
 .set-value {
   text-align: left;
   width: 25%;
-  font-size: 8px;
+  font-size: 13px;
 }
 
 .input-field {
@@ -53,7 +51,7 @@
   width: 100%;
   border: none;
   padding: 2px;
-  font-size: 8px;
+  font-size: 13px;
   border-radius: 5px;
   pointer-events: auto;
   cursor: text;
@@ -69,12 +67,12 @@
 }
 
 .pipeline-input::placeholder {
-  color: #999;
-  font-size: 7px;
+  color: #5a5959;
+  font-size: 13px;
 }
 
 /* レスポンシブデザイン */
-@media (max-width: 1200px) {
+/* @media (max-width: 1200px) {
   .pipeline-info-display {
     font-size: 9px;
     max-height: 350px;
@@ -192,7 +190,7 @@
   .pipeline-input::placeholder {
     font-size: 4px;
   }
-}
+} */
 
 /* スクロールバーのスタイル */
 .pipeline-info-display::-webkit-scrollbar {

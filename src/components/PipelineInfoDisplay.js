@@ -37,8 +37,16 @@ function PipelineInfoDisplay({
       const getPipelineData = () => {
         const startPoint = geom?.vertices?.[0];
         const endPoint = geom?.vertices?.[geom.vertices.length - 1];
-        const center = geom?.center;
+        let center = geom?.center;
         
+        if(!center && startPoint && endPoint) {
+          center = [
+            (startPoint[0] + endPoint[0]) / 2,
+            (startPoint[1] + endPoint[1]) / 2,
+            (startPoint[2] + endPoint[2]) / 2
+          ];
+        }
+
         // 長さの計算
         let length = 0;
         if (startPoint && endPoint) {
@@ -52,17 +60,17 @@ function PipelineInfoDisplay({
         const pipelineData = {
           形状: getShapeTypeName(),
           識別番号: feature_id || '',
-          東西: center ? center[0].toFixed(3) : (startPoint ? startPoint[0].toFixed(3) : ''),
-          上被り深さ: center ? (-center[1]).toFixed(3) : (startPoint ? (-startPoint[1]).toFixed(3) : ''),
-          南北: center ? center[2].toFixed(3) : (startPoint ? startPoint[2].toFixed(3) : ''),
-          直径: attributes?.radius ? (attributes.radius / 1000).toFixed(3) : (attributes?.diameter ? (attributes.diameter / 1000).toFixed(3) : ''),
-          長さ: length.toFixed(3),
-          端点1東西: startPoint ? startPoint[0].toFixed(3) : '',
-          端点1上被り深さ: startPoint ? (-startPoint[1]).toFixed(3) : '',
-          端点1南北: startPoint ? startPoint[2].toFixed(3) : '',
-          端点2東西: endPoint ? endPoint[0].toFixed(3) : '',
-          端点2上被り深さ: endPoint ? (-endPoint[1]).toFixed(3) : '',
-          端点2南北: endPoint ? endPoint[2].toFixed(3) : '',
+          '東西[m]': center ? center[0].toFixed(3) : (startPoint ? startPoint[0].toFixed(3) : ''),
+          '上被り深さ[m]': center ? (-center[2]).toFixed(3) : (startPoint ? (-startPoint[2]).toFixed(3) : ''),
+          '南北[m]': center ? center[1].toFixed(3) : (startPoint ? startPoint[1].toFixed(3) : ''),
+          '直径[mm]': attributes?.radius ? (attributes.radius / 2).toFixed(3) : (attributes?.diameter ? (attributes.diameter / 1000).toFixed(3) : ''),
+          '長さ[m]': length.toFixed(3),
+          '端点1東西[m]': startPoint ? startPoint[0].toFixed(3) : '',
+          '端点1上被り深さ[m]': startPoint ? (-startPoint[2]).toFixed(3) : '',
+          '端点1南北[m]': startPoint ? startPoint[1].toFixed(3) : '',
+          '端点2東西[m]': endPoint ? endPoint[0].toFixed(3) : '',
+          '端点2上被り深さ[m]': endPoint ? (-endPoint[2]).toFixed(3) : '',
+          '端点2南北[m]': endPoint ? endPoint[1].toFixed(3) : '',
           種別: attributes?.pipe_kind || '',
           材質: attributes?.material || ''
         };
@@ -154,10 +162,10 @@ function PipelineInfoDisplay({
               <td className="input-field">
                 <input 
                   type="text" 
-                  value={inputValues[key] || ''} 
+                  value={inputValues[key] !== undefined ? inputValues[key] : value} 
                   onChange={(e) => handleInputChange(key, e.target.value)}
                   className="pipeline-input"
-                  placeholder={value || '入力'}
+                  placeholder="入力"
                   onClick={handleInputClick}
                 />
               </td>
