@@ -9,6 +9,7 @@ import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectio
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import InfiniteGridHelper from './InfiniteGridHelper';
+import { DistanceMeasurement, DistanceMeasurementDisplay } from './DistanceMeasurement';
 import './Scene3D.css';
 
 /**
@@ -47,6 +48,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const dragPlane = useRef(new THREE.Plane());
   const dragIntersection = useRef(new THREE.Vector3());
 
+  // 距離計測用のref
+  const distanceMeasurementRef = useRef(null);
+
   // カメラ位置情報のstate
   const [cameraInfo, setCameraInfo] = useState({
     x: 20.0,
@@ -69,6 +73,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const [showPipes, setShowPipes] = useState(true);
   const [showFloor, setShowFloor] = useState(true);
   const [showBackground, setShowBackground] = useState(true);
+
+  // 距離計測結果のstate
+  const [measurementResult, setMeasurementResult] = useState(null);
 
   // オブジェクトの元データを保存（復元機能用）
   const originalObjectsData = useRef({});
@@ -1079,6 +1086,19 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     composerRef.current = composer;
     outlinePassRef.current = outlinePass;
 
+    // 距離計測の初期化
+    const distanceMeasurement = new DistanceMeasurement(
+      scene,
+      camera,
+      renderer,
+      objectsRef.current,
+      raycasterRef.current,
+      mouseRef.current
+    );
+    distanceMeasurement.setResultUpdateCallback(setMeasurementResult);
+    distanceMeasurement.enable(mountRef.current);
+    distanceMeasurementRef.current = distanceMeasurement;
+
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
     mountRef.current.addEventListener('mousedown', handleMouseDown);
@@ -1226,13 +1246,19 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         keysPressed.current['2'] = false;
       }
 
-      // ESC: 管路情報表示をクリア
+      // ESC: 計測結果と管路情報表示をクリア
       if (keysPressed.current['escape']) {
-        setSelectedObject(null);
-        selectedMeshRef.current = null;
-        // アウトラインをクリア
-        if (outlinePassRef.current) {
-          outlinePassRef.current.selectedObjects = [];
+        // 計測結果がある場合は計測結果のみクリア
+        if (distanceMeasurementRef.current && measurementResult) {
+          distanceMeasurementRef.current.clear();
+        } else {
+          // 計測結果がない場合は管路情報表示をクリア
+          setSelectedObject(null);
+          selectedMeshRef.current = null;
+          // アウトラインをクリア
+          if (outlinePassRef.current) {
+            outlinePassRef.current.selectedObjects = [];
+          }
         }
         keysPressed.current['escape'] = false;
       }
@@ -1342,6 +1368,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         if (renderer.domElement.parentNode === mountRef.current) {
           mountRef.current.removeChild(renderer.domElement);
         }
+      }
+      // 距離計測のクリーンアップ
+      if (distanceMeasurementRef.current) {
+        distanceMeasurementRef.current.dispose(mountRef.current);
       }
       skyComponent.dispose();
       controls.dispose();
@@ -1495,12 +1525,16 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           左クリック: 管路情報を表示します<br />
           ESCキー: 管路情報表示をクリア<br />
           ◆離隔計測<br />
-          左Shift+左ドラッグ: 管路間の最近接距離を計測します 中クリック:地表面で折れ線の長さを計測します。<br />
+          左Shift+左ドラッグ: 管路間の最近接距離を計測します<br />
           ESCキー: 離隔をクリア<br />
           ◆表示切り替え<br />
           1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br />
           Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
           ◆離隔計測結果
+          {/* 距離計測結果を表示 */}
+          {measurementResult && (
+            <DistanceMeasurementDisplay measurementResult={measurementResult} />
+          )}
           {/* 選択された管路情報を表示 */}
           {selectedObject && (
             <PipelineInfoDisplay

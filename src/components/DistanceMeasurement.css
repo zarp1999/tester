@@ -1,0 +1,82 @@
+.distance-measurement-display {
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #00ff00;
+  border-radius: 4px;
+  color: white;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.measurement-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #00ff00;
+  border-bottom: 1px solid #00ff00;
+  padding-bottom: 4px;
+}
+
+.measurement-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.measurement-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.measurement-row .label {
+  font-weight: bold;
+  color: #ffff00;
+  min-width: 50px;
+}
+
+.measurement-row .value {
+  color: #ffffff;
+}
+
+.measurement-row .point {
+  color: #00ffff;
+  font-size: 11px;
+}
+
+.measurement-row .distance {
+  color: #ff00ff;
+  font-weight: bold;
+  margin-left: auto;
+}
+
+/* ホバー効果 */
+.distance-measurement-display:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .distance-measurement-display {
+    font-size: 10px;
+  }
+
+  .measurement-title {
+    font-size: 12px;
+  }
+
+  .measurement-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .measurement-row .distance {
+    margin-left: 0;
+  }
+}
+
