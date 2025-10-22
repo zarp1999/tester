@@ -35,6 +35,10 @@ class DistanceMeasurement {
     this.closestLineDirection = null;
     this.closestLineMidPoint = null;
 
+    // 表示状態管理
+    this.showClosest = true;   // 近接距離を表示
+    this.showSpecified = false; // 指定距離を非表示
+
     // 計測結果データ
     this.measurementResult = null;
 
@@ -127,8 +131,16 @@ class DistanceMeasurement {
     } else {
       // 管路との交点がない場合、始点の高さの平面との交点を使用
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.startPoint.y);
-      currentPoint = new THREE.Vector3();
-      this.raycasterRef.ray.intersectPlane(plane, currentPoint);
+      const planeIntersect = new THREE.Vector3();
+      this.raycasterRef.ray.intersectPlane(plane, planeIntersect);
+      
+      // 交点が始点から一定距離内の場合のみ使用（遠くに飛ばないように）
+      if (planeIntersect) {
+        const distance = this.startPoint.distanceTo(planeIntersect);
+        if (distance < 1000) {  // 1000m以内のみ有効
+          currentPoint = planeIntersect;
+        }
+      }
     }
 
     if (currentPoint) {
@@ -190,11 +202,33 @@ class DistanceMeasurement {
   }
 
   /**
-   * キーボードハンドラー（Escキーでクリア）
+   * キーボードハンドラー（Escキーでクリア、5キーで表示切替）
    */
   handleKeyDown(event) {
     if (event.key === 'Escape') {
       this.clear();
+    } else if (event.key === '5') {
+      // 近接と指定の表示を切り替え
+      this.toggleLineDisplay();
+    }
+  }
+
+  /**
+   * 近接と指定の表示を切り替え
+   */
+  toggleLineDisplay() {
+    if (!this.measurementResult) return;
+
+    // 表示状態を切り替え
+    this.showClosest = !this.showClosest;
+    this.showSpecified = !this.showSpecified;
+
+    // 線の表示/非表示を更新
+    if (this.closestLine) {
+      this.closestLine.visible = this.showClosest;
+    }
+    if (this.measurementLine) {
+      this.measurementLine.visible = this.showSpecified;
     }
   }
 
@@ -228,7 +262,7 @@ class DistanceMeasurement {
     const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
     
     // 幅広い平面ジオメトリを作成（1枚の板）
-    const width = 0.3;  // 線の幅
+    const width = 0.15;  // 線の幅
     const geometry = new THREE.PlaneGeometry(length, width);
     
     const material = new THREE.MeshBasicMaterial({
@@ -278,7 +312,7 @@ class DistanceMeasurement {
     const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
     
     // 幅広い平面ジオメトリを作成（1枚の板）
-    const width = 0.3;  // 線の幅
+    const width = 0.15;  // 線の幅
     const geometry = new THREE.PlaneGeometry(length, width);
     
     // テキスト付きのテクスチャを作成（線の幅方向に表示）
@@ -334,15 +368,17 @@ class DistanceMeasurement {
     const lineMesh = new THREE.Mesh(geometry, material);
     lineMesh.position.copy(midPoint);
     
-    // 線のタイプに応じて保存
+    // 線のタイプに応じて保存と表示状態を設定
     if (lineType === 'closest') {
       this.closestLine = lineMesh;
       this.closestLineDirection = direction.normalize();
       this.closestLineMidPoint = midPoint.clone();
+      lineMesh.visible = this.showClosest;  // 表示状態を反映
     } else {
       this.measurementLine = lineMesh;
       this.lineDirection = direction.normalize();
       this.lineMidPoint = midPoint.clone();
+      lineMesh.visible = this.showSpecified;  // 表示状態を反映
     }
     
     // 初期回転を設定
@@ -456,57 +492,15 @@ class DistanceMeasurement {
       }
     };
 
-    // 近接点を計算（管路の実際のワールド座標から）
+    // 近接点を計算（頂点、辺、面すべてを含めた最短距離）
     if (this.startPipe.geometry && this.endPipe.geometry) {
-      // 管路オブジェクトのジオメトリから端点を取得
-      const startGeometry = this.startPipe.geometry;
-      const endGeometry = this.endPipe.geometry;
+      const closestPoints = this.getClosestPointsBetweenMeshes(this.startPipe, this.endPipe);
       
-      // ジオメトリの頂点配列を取得
-      const startVertices = startGeometry.attributes.position;
-      const endVertices = endGeometry.attributes.position;
-      
-      if (startVertices && endVertices && 
-          startVertices.count >= 2 && endVertices.count >= 2) {
-        
-        // 管路Aの端点（ワールド座標）
-        const startA = new THREE.Vector3(
-          startVertices.getX(0),
-          startVertices.getY(0),
-          startVertices.getZ(0)
-        );
-        this.startPipe.localToWorld(startA);
-        
-        const endA = new THREE.Vector3(
-          startVertices.getX(startVertices.count - 1),
-          startVertices.getY(startVertices.count - 1),
-          startVertices.getZ(startVertices.count - 1)
-        );
-        this.startPipe.localToWorld(endA);
-        
-        // 管路Bの端点（ワールド座標）
-        const startB = new THREE.Vector3(
-          endVertices.getX(0),
-          endVertices.getY(0),
-          endVertices.getZ(0)
-        );
-        this.endPipe.localToWorld(startB);
-        
-        const endB = new THREE.Vector3(
-          endVertices.getX(endVertices.count - 1),
-          endVertices.getY(endVertices.count - 1),
-          endVertices.getZ(endVertices.count - 1)
-        );
-        this.endPipe.localToWorld(endB);
-        
-        // 最近接点を計算（線分と線分の最短距離）
-        const closestPoints = this.getClosestPointsBetweenLineSegments(startA, endA, startB, endB);
-        const closestDistance = closestPoints.pointA.distanceTo(closestPoints.pointB);
-
+      if (closestPoints) {
         measurementData.closest = {
           pointA: closestPoints.pointA,
           pointB: closestPoints.pointB,
-          distance: closestDistance
+          distance: closestPoints.distance
         };
       }
     }
@@ -590,6 +584,197 @@ class DistanceMeasurement {
     const pointB = b1.clone().add(d2.clone().multiplyScalar(t));
 
     return { pointA, pointB };
+  }
+
+  /**
+   * 2つのメッシュ間の最短距離を計算（頂点、辺、面すべてを含む）
+   */
+  getClosestPointsBetweenMeshes(meshA, meshB) {
+    const geometryA = meshA.geometry;
+    const geometryB = meshB.geometry;
+    
+    if (!geometryA || !geometryB) return null;
+    
+    const positionA = geometryA.attributes.position;
+    const positionB = geometryB.attributes.position;
+    const indexA = geometryA.index;
+    const indexB = geometryB.index;
+    
+    if (!positionA || !positionB) return null;
+    
+    let minDistance = Infinity;
+    let closestPointA = null;
+    let closestPointB = null;
+    
+    // 管路Aの全頂点をワールド座標で取得
+    const verticesA = [];
+    for (let i = 0; i < positionA.count; i++) {
+      const v = new THREE.Vector3(
+        positionA.getX(i),
+        positionA.getY(i),
+        positionA.getZ(i)
+      );
+      meshA.localToWorld(v);
+      verticesA.push(v);
+    }
+    
+    // 管路Bの全頂点をワールド座標で取得
+    const verticesB = [];
+    for (let i = 0; i < positionB.count; i++) {
+      const v = new THREE.Vector3(
+        positionB.getX(i),
+        positionB.getY(i),
+        positionB.getZ(i)
+      );
+      meshB.localToWorld(v);
+      verticesB.push(v);
+    }
+    
+    // 1. 管路Aの各頂点 vs 管路Bの各面
+    if (indexB) {
+      for (let i = 0; i < verticesA.length; i++) {
+        for (let j = 0; j < indexB.count; j += 3) {
+          const v0 = verticesB[indexB.getX(j)];
+          const v1 = verticesB[indexB.getX(j + 1)];
+          const v2 = verticesB[indexB.getX(j + 2)];
+          
+          const result = this.getClosestPointToTriangle(verticesA[i], v0, v1, v2);
+          if (result.distance < minDistance) {
+            minDistance = result.distance;
+            closestPointA = verticesA[i];
+            closestPointB = result.closestPoint;
+          }
+        }
+      }
+    }
+    
+    // 2. 管路Bの各頂点 vs 管路Aの各面
+    if (indexA) {
+      for (let i = 0; i < verticesB.length; i++) {
+        for (let j = 0; j < indexA.count; j += 3) {
+          const v0 = verticesA[indexA.getX(j)];
+          const v1 = verticesA[indexA.getX(j + 1)];
+          const v2 = verticesA[indexA.getX(j + 2)];
+          
+          const result = this.getClosestPointToTriangle(verticesB[i], v0, v1, v2);
+          if (result.distance < minDistance) {
+            minDistance = result.distance;
+            closestPointA = result.closestPoint;
+            closestPointB = verticesB[i];
+          }
+        }
+      }
+    }
+    
+    // 3. 管路Aの各辺 vs 管路Bの各辺
+    if (indexA && indexB) {
+      for (let i = 0; i < indexA.count; i += 3) {
+        const edgesA = [
+          [indexA.getX(i), indexA.getX(i + 1)],
+          [indexA.getX(i + 1), indexA.getX(i + 2)],
+          [indexA.getX(i + 2), indexA.getX(i)]
+        ];
+        
+        for (const [a0, a1] of edgesA) {
+          for (let j = 0; j < indexB.count; j += 3) {
+            const edgesB = [
+              [indexB.getX(j), indexB.getX(j + 1)],
+              [indexB.getX(j + 1), indexB.getX(j + 2)],
+              [indexB.getX(j + 2), indexB.getX(j)]
+            ];
+            
+            for (const [b0, b1] of edgesB) {
+              const result = this.getClosestPointsBetweenLineSegments(
+                verticesA[a0], verticesA[a1],
+                verticesB[b0], verticesB[b1]
+              );
+              const distance = result.pointA.distanceTo(result.pointB);
+              if (distance < minDistance) {
+                minDistance = distance;
+                closestPointA = result.pointA;
+                closestPointB = result.pointB;
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    if (closestPointA && closestPointB) {
+      return {
+        pointA: closestPointA,
+        pointB: closestPointB,
+        distance: minDistance
+      };
+    }
+    
+    return null;
+  }
+
+  /**
+   * 点と三角形の最短距離を計算
+   */
+  getClosestPointToTriangle(point, v0, v1, v2) {
+    const edge0 = new THREE.Vector3().subVectors(v1, v0);
+    const edge1 = new THREE.Vector3().subVectors(v2, v0);
+    const v0ToPoint = new THREE.Vector3().subVectors(point, v0);
+    
+    const a = edge0.dot(edge0);
+    const b = edge0.dot(edge1);
+    const c = edge1.dot(edge1);
+    const d = edge0.dot(v0ToPoint);
+    const e = edge1.dot(v0ToPoint);
+    
+    const det = a * c - b * b;
+    let s = b * e - c * d;
+    let t = b * d - a * e;
+    
+    if (s + t <= det) {
+      if (s < 0) {
+        if (t < 0) {
+          // region 4
+          s = 0;
+          t = 0;
+        } else {
+          // region 3
+          s = 0;
+          t = Math.max(0, Math.min(1, e / c));
+        }
+      } else if (t < 0) {
+        // region 5
+        s = Math.max(0, Math.min(1, d / a));
+        t = 0;
+      } else {
+        // region 0 (interior)
+        const invDet = 1 / det;
+        s *= invDet;
+        t *= invDet;
+      }
+    } else {
+      if (s < 0) {
+        // region 2
+        s = 0;
+        t = 1;
+      } else if (t < 0) {
+        // region 6
+        s = 1;
+        t = 0;
+      } else {
+        // region 1
+        const numer = c + e - b - d;
+        const denom = a - 2 * b + c;
+        s = Math.max(0, Math.min(1, numer / denom));
+        t = 1 - s;
+      }
+    }
+    
+    const closestPoint = v0.clone()
+      .add(edge0.clone().multiplyScalar(s))
+      .add(edge1.clone().multiplyScalar(t));
+    
+    const distance = point.distanceTo(closestPoint);
+    
+    return { closestPoint, distance };
   }
 
   /**
@@ -736,6 +921,10 @@ class DistanceMeasurement {
 
     // 計測結果をクリア
     this.measurementResult = null;
+
+    // 表示状態をリセット
+    this.showClosest = true;   // 近接距離を表示
+    this.showSpecified = false; // 指定距離を非表示
 
     // 結果更新コールバックを呼び出し
     if (this.onResultUpdate) {
