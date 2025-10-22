@@ -21,9 +21,12 @@ class DistanceMeasurement {
     this.isMeasuring = false;
     this.startPipe = null;
     this.endPipe = null;
+    this.startPoint = null;  // 実際のクリック位置（始点）
+    this.endPoint = null;    // 実際のクリック位置（終点）
     this.measurementLine = null;
     this.measurementPoints = [];
     this.textMesh = null;
+    this.previewLine = null; // プレビュー線
 
     // 計測結果データ
     this.measurementResult = null;
@@ -70,7 +73,7 @@ class DistanceMeasurement {
     event.preventDefault();
     event.stopPropagation();
 
-    // Raycasterで管路を検出
+    // Raycasterで管路または地面を検出
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
     const intersects = this.raycasterRef.intersectObjects(
       Object.values(this.objectsRef),
@@ -79,12 +82,18 @@ class DistanceMeasurement {
 
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
+      const clickedPoint = intersects[0].point; // 実際の交点
+      
       if (clickedObject.userData.objectData) {
         this.isMeasuring = true;
         this.startPipe = clickedObject;
+        this.startPoint = clickedPoint.clone(); // 実際のクリック位置を保存
         
         // 視覚的なフィードバック（始点を強調表示）
         this.highlightPipe(this.startPipe, 0x00ff00);
+        
+        // 始点マーカーを表示
+        this.drawMeasurementPoint(this.startPoint, 0x00ff00);
       }
     }
   }
@@ -93,13 +102,15 @@ class DistanceMeasurement {
    * マウス移動ハンドラー
    */
   handleMouseMove(event) {
-    if (!this.isMeasuring || !this.startPipe) {
+    if (!this.isMeasuring || !this.startPoint) {
       return;
     }
 
-    // 現在のマウス位置で管路を検出
+    // 現在のマウス位置で交点を計算
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
-    const intersects = this.raycasterRef.intersectObjects(
+    
+    // まず管路との交点を試みる
+    const pipeIntersects = this.raycasterRef.intersectObjects(
       Object.values(this.objectsRef),
       false
     );
@@ -107,12 +118,21 @@ class DistanceMeasurement {
     // 既存のプレビュー線を削除
     this.clearPreviewLine();
 
-    if (intersects.length > 0) {
-      const hoveredObject = intersects[0].object;
-      if (hoveredObject !== this.startPipe && hoveredObject.userData.objectData) {
-        // プレビュー線を描画
-        this.drawPreviewLine(this.startPipe.position, hoveredObject.position);
-      }
+    let currentPoint = null;
+
+    if (pipeIntersects.length > 0) {
+      // 管路との交点がある場合
+      currentPoint = pipeIntersects[0].point;
+    } else {
+      // 管路との交点がない場合、始点の高さの平面との交点を使用
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.startPoint.y);
+      currentPoint = new THREE.Vector3();
+      this.raycasterRef.ray.intersectPlane(plane, currentPoint);
+    }
+
+    if (currentPoint) {
+      // プレビュー線を描画（始点から現在のマウス位置まで）
+      this.drawPreviewLine(this.startPoint, currentPoint);
     }
   }
 
@@ -120,7 +140,7 @@ class DistanceMeasurement {
    * マウスアップハンドラー
    */
   handleMouseUp(event) {
-    if (!this.isMeasuring || !this.startPipe) {
+    if (!this.isMeasuring || !this.startPoint) {
       return;
     }
 
@@ -134,24 +154,40 @@ class DistanceMeasurement {
     event.preventDefault();
     event.stopPropagation();
 
-    // Raycasterで終点の管路を検出
+    // 現在のマウス位置で交点を計算
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
-    const intersects = this.raycasterRef.intersectObjects(
+    
+    // まず管路との交点を試みる
+    const pipeIntersects = this.raycasterRef.intersectObjects(
       Object.values(this.objectsRef),
       false
     );
 
-    if (intersects.length > 0) {
-      const clickedObject = intersects[0].object;
-      if (clickedObject !== this.startPipe && clickedObject.userData.objectData) {
-        this.endPipe = clickedObject;
-        
-        // 視覚的なフィードバック（終点を強調表示）
+    let endPoint = null;
+    let endPipe = null;
+
+    if (pipeIntersects.length > 0) {
+      // 管路との交点がある場合
+      endPoint = pipeIntersects[0].point.clone();
+      endPipe = pipeIntersects[0].object;
+    } else {
+      // 管路との交点がない場合、始点の高さの平面との交点を使用
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.startPoint.y);
+      endPoint = new THREE.Vector3();
+      this.raycasterRef.ray.intersectPlane(plane, endPoint);
+    }
+
+    if (endPoint) {
+      this.endPoint = endPoint;
+      this.endPipe = endPipe;
+      
+      // 終点の管路がある場合は強調表示
+      if (this.endPipe && this.endPipe !== this.startPipe && this.endPipe.userData.objectData) {
         this.highlightPipe(this.endPipe, 0x0000ff);
-        
-        // 距離を計測
-        this.calculateDistance();
       }
+      
+      // 距離を計測
+      this.calculateDistance();
     }
 
     this.isMeasuring = false;
@@ -302,68 +338,24 @@ class DistanceMeasurement {
    * 管路間の距離を計算
    */
   calculateDistance() {
-    if (!this.startPipe || !this.endPipe) return;
+    if (!this.startPoint || !this.endPoint) return;
 
-    const startData = this.startPipe.userData.objectData;
-    const endData = this.endPipe.userData.objectData;
-
-    // 管路の端点を取得
-    const startGeom = startData.geometry?.[0];
-    const endGeom = endData.geometry?.[0];
-
-    if (!startGeom || !endGeom || !startGeom.vertices || !endGeom.vertices) {
-      return;
-    }
-
-    // 始点と終点の座標を取得
-    const startVertices = startGeom.vertices;
-    const endVertices = endGeom.vertices;
-
-    if (startVertices.length < 2 || endVertices.length < 2) {
-      return;
-    }
-
-    // 深度属性の処理
-    const getPoint3D = (vertices, index, depthAttr) => {
-      const v = vertices[index];
-      if (depthAttr != null && Number.isFinite(Number(depthAttr))) {
-        const depth = Number(depthAttr / 100);
-        return new THREE.Vector3(v[0], depth > 0 ? -depth : depth, v[1]);
-      }
-      return new THREE.Vector3(v[0], v[2] || 0, v[1]);
-    };
-
-    // 管路Aの端点
-    const startA = getPoint3D(startVertices, 0, startData.attributes?.start_point_depth);
-    const endA = getPoint3D(startVertices, startVertices.length - 1, startData.attributes?.end_point_depth);
-
-    // 管路Bの端点
-    const startB = getPoint3D(endVertices, 0, endData.attributes?.start_point_depth);
-    const endB = getPoint3D(endVertices, endVertices.length - 1, endData.attributes?.end_point_depth);
-
-    // 最近接点を計算（線分と線分の最短距離）
-    const closestPoints = this.getClosestPointsBetweenLineSegments(startA, endA, startB, endB);
-    const closestDistance = closestPoints.pointA.distanceTo(closestPoints.pointB);
-
-    // 指定点間の距離（現在の位置）
-    const specifiedPointA = this.startPipe.position.clone();
-    const specifiedPointB = this.endPipe.position.clone();
+    // 指定点間の距離（実際のクリック位置）
+    const specifiedPointA = this.startPoint.clone();
+    const specifiedPointB = this.endPoint.clone();
     const specifiedDistance = specifiedPointA.distanceTo(specifiedPointB);
 
-    // 計測結果を保存
-    this.measurementResult = {
+    // 計測結果のベース
+    let measurementData = {
       pipeA: {
-        id: startData.id || '不明',
-        name: startData.attributes?.name || startData.attributes?.pipe_kind || '管路A'
+        id: this.startPipe?.userData?.objectData?.id || '不明',
+        name: this.startPipe?.userData?.objectData?.attributes?.name || 
+              this.startPipe?.userData?.objectData?.attributes?.pipe_kind || '管路A'
       },
       pipeB: {
-        id: endData.id || '不明',
-        name: endData.attributes?.name || endData.attributes?.pipe_kind || '管路B'
-      },
-      closest: {
-        pointA: closestPoints.pointA,
-        pointB: closestPoints.pointB,
-        distance: closestDistance
+        id: this.endPipe?.userData?.objectData?.id || '不明',
+        name: this.endPipe?.userData?.objectData?.attributes?.name || 
+              this.endPipe?.userData?.objectData?.attributes?.pipe_kind || '管路B'
       },
       specified: {
         pointA: specifiedPointA,
@@ -372,8 +364,58 @@ class DistanceMeasurement {
       }
     };
 
+    // 両方の管路が存在する場合のみ近接点を計算
+    if (this.startPipe && this.endPipe && 
+        this.startPipe.userData.objectData && this.endPipe.userData.objectData) {
+      
+      const startData = this.startPipe.userData.objectData;
+      const endData = this.endPipe.userData.objectData;
+
+      // 管路の端点を取得
+      const startGeom = startData.geometry?.[0];
+      const endGeom = endData.geometry?.[0];
+
+      if (startGeom && endGeom && startGeom.vertices && endGeom.vertices &&
+          startGeom.vertices.length >= 2 && endGeom.vertices.length >= 2) {
+        
+        // 深度属性の処理
+        const getPoint3D = (vertices, index, depthAttr) => {
+          const v = vertices[index];
+          if (depthAttr != null && Number.isFinite(Number(depthAttr))) {
+            const depth = Number(depthAttr / 100);
+            return new THREE.Vector3(v[0], depth > 0 ? -depth : depth, v[1]);
+          }
+          return new THREE.Vector3(v[0], v[2] || 0, v[1]);
+        };
+
+        // 管路Aの端点
+        const startA = getPoint3D(startGeom.vertices, 0, startData.attributes?.start_point_depth);
+        const endA = getPoint3D(startGeom.vertices, startGeom.vertices.length - 1, startData.attributes?.end_point_depth);
+
+        // 管路Bの端点
+        const startB = getPoint3D(endGeom.vertices, 0, endData.attributes?.start_point_depth);
+        const endB = getPoint3D(endGeom.vertices, endGeom.vertices.length - 1, endData.attributes?.end_point_depth);
+
+        // 最近接点を計算（線分と線分の最短距離）
+        const closestPoints = this.getClosestPointsBetweenLineSegments(startA, endA, startB, endB);
+        const closestDistance = closestPoints.pointA.distanceTo(closestPoints.pointB);
+
+        measurementData.closest = {
+          pointA: closestPoints.pointA,
+          pointB: closestPoints.pointB,
+          distance: closestDistance
+        };
+      }
+    }
+
+    // 計測結果を保存
+    this.measurementResult = measurementData;
+
     // 計測線を描画
     this.drawMeasurementLine(specifiedPointA, specifiedPointB, specifiedDistance);
+
+    // 終点マーカーを表示
+    this.drawMeasurementPoint(this.endPoint, 0x0000ff);
 
     // 結果更新コールバックを呼び出し
     if (this.onResultUpdate) {
@@ -494,6 +536,10 @@ class DistanceMeasurement {
     // プレビュー線を削除
     this.clearPreviewLine();
 
+    // 計測位置をクリア
+    this.startPoint = null;
+    this.endPoint = null;
+
     // 計測結果をクリア
     this.measurementResult = null;
 
@@ -534,16 +580,18 @@ function DistanceMeasurementDisplay({ measurementResult }) {
           <span className="label">{pipeB.name}:</span>
           <span className="value">{pipeB.id}</span>
         </div>
-        <div className="measurement-row">
-          <span className="label">近接</span>
-          <span className="point">
-            A点: ({closest.pointA.x.toFixed(2)}, {closest.pointA.y.toFixed(2)}, {closest.pointA.z.toFixed(2)})
-          </span>
-          <span className="point">
-            B点: ({closest.pointB.x.toFixed(2)}, {closest.pointB.y.toFixed(2)}, {closest.pointB.z.toFixed(2)})
-          </span>
-          <span className="distance">距離: {closest.distance.toFixed(3)}[m]</span>
-        </div>
+        {closest && (
+          <div className="measurement-row">
+            <span className="label">近接</span>
+            <span className="point">
+              A点: ({closest.pointA.x.toFixed(2)}, {closest.pointA.y.toFixed(2)}, {closest.pointA.z.toFixed(2)})
+            </span>
+            <span className="point">
+              B点: ({closest.pointB.x.toFixed(2)}, {closest.pointB.y.toFixed(2)}, {closest.pointB.z.toFixed(2)})
+            </span>
+            <span className="distance">距離: {closest.distance.toFixed(3)}[m]</span>
+          </div>
+        )}
         <div className="measurement-row">
           <span className="label">指定</span>
           <span className="point">

@@ -408,6 +408,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
+    // 左Shiftキーが押されている場合は距離計測を優先（管路ドラッグを無効化）
+    if (event.shiftKey) {
+      return;
+    }
+
     // ドラッグ中の処理
     if (isDragging.current && selectedMeshRef.current) {
       const camera = cameraRef.current;
@@ -433,6 +438,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const handleMouseDown = (event) => {
     // 左クリックのみ処理
     if (event.button !== 0) {
+      return;
+    }
+
+    // 左Shiftキーが押されている場合は距離計測を優先（管路ドラッグを無効化）
+    if (event.shiftKey) {
       return;
     }
 
@@ -486,6 +496,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   // マウスアップハンドラー
   const handleMouseUp = (event) => {
     if (event.button === 0) { // 左クリックのみ
+      // 左Shiftキーが押されている場合は距離計測を優先（管路ドラッグを無効化）
+      if (event.shiftKey) {
+        return;
+      }
+
       if (isDragging.current && selectedMeshRef.current) {
         // ドラッグ終了時にオブジェクトデータを更新
         const currentObjectData = selectedMeshRef.current.userData.objectData;
@@ -574,6 +589,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
   // クリックハンドラー
   const handleClick = (event) => {
+    // 左Shiftキーが押されている場合は距離計測を優先（管路選択を無効化）
+    if (event.shiftKey) {
+      return;
+    }
+
     // 管路情報表示エリア内のクリックは無視
     if (event.target.closest('.pipeline-info-display') ||
       event.target.closest('.pipeline-info-text') ||
