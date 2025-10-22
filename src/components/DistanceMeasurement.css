@@ -61,7 +61,7 @@
 }
 
 /* レスポンシブ対応 */
-@media (max-width: 768px) {
+/* @media (max-width: 768px) {
   .distance-measurement-display {
     font-size: 10px;
   }
@@ -77,6 +77,6 @@
 
   .measurement-row .distance {
     margin-left: 0;
-  }
-}
+  } */
+/* } */
 

@@ -1111,7 +1111,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       scene,
       camera,
       renderer,
-      objectsRef.current,
+      objectsRef,  // refオブジェクト自体を渡す
       raycasterRef.current,
       mouseRef.current
     );
@@ -1368,6 +1368,11 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         // 前回の値を更新
         previousCameraPosition.current.copy(camera.position);
         previousCameraRotation.current.copy(camera.rotation);
+      }
+
+      // 距離計測の線をカメラに向けて回転
+      if (distanceMeasurementRef.current) {
+        distanceMeasurementRef.current.update();
       }
 
       // Composerでレンダリングしてアウトラインエフェクトを適用
