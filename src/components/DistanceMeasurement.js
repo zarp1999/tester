@@ -91,9 +91,6 @@ class DistanceMeasurement {
         
         // 視覚的なフィードバック（始点を強調表示）
         this.highlightPipe(this.startPipe, 0x00ff00);
-        
-        // 始点マーカーを表示
-        this.drawMeasurementPoint(this.startPoint, 0x00ff00);
       }
     }
   }
@@ -224,31 +221,32 @@ class DistanceMeasurement {
   }
 
   /**
-   * プレビュー線を描画
+   * プレビュー線を描画（太い赤色の半透明線）
    */
   drawPreviewLine(startPos, endPos) {
-    const geometry = new THREE.BufferGeometry().setFromPoints([startPos, endPos]);
-    const material = new THREE.LineBasicMaterial({
-      color: 0xffff00,
-      linewidth: 3,
-      opacity: 0.6,
+    // TubeGeometryで太い線を描画
+    const path = new THREE.LineCurve3(startPos, endPos);
+    const tubeGeometry = new THREE.TubeGeometry(path, 20, 0.15, 8, false);
+    const tubeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff0000,  // 赤色
       transparent: true,
+      opacity: 0.5,     // 透明度50%
       depthTest: false
     });
 
-    this.measurementLine = new THREE.Line(geometry, material);
-    this.scene.add(this.measurementLine);
+    this.previewLine = new THREE.Mesh(tubeGeometry, tubeMaterial);
+    this.scene.add(this.previewLine);
   }
 
   /**
    * プレビュー線をクリア
    */
   clearPreviewLine() {
-    if (this.measurementLine) {
-      this.scene.remove(this.measurementLine);
-      this.measurementLine.geometry.dispose();
-      this.measurementLine.material.dispose();
-      this.measurementLine = null;
+    if (this.previewLine) {
+      this.scene.remove(this.previewLine);
+      this.previewLine.geometry.dispose();
+      this.previewLine.material.dispose();
+      this.previewLine = null;
     }
   }
 
@@ -271,10 +269,6 @@ class DistanceMeasurement {
 
     // 距離テキストを線の中央に表示
     this.drawDistanceText(startPos, endPos, distance);
-
-    // 端点を球で表示
-    this.drawMeasurementPoint(startPos, 0x00ff00);
-    this.drawMeasurementPoint(endPos, 0x0000ff);
   }
 
   /**
@@ -413,9 +407,6 @@ class DistanceMeasurement {
 
     // 計測線を描画
     this.drawMeasurementLine(specifiedPointA, specifiedPointB, specifiedDistance);
-
-    // 終点マーカーを表示
-    this.drawMeasurementPoint(this.endPoint, 0x0000ff);
 
     // 結果更新コールバックを呼び出し
     if (this.onResultUpdate) {
