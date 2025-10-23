@@ -128,19 +128,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
 
-        let startPoint, endPoint;
-        if (hasDepthAttrs) {
-          const startDepth = Number(obj.attributes.start_point_depth / 100);
-          const endDepth = Number(obj.attributes.end_point_depth / 100);
-          startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
-          endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
-        } else {
-          startPoint = new THREE.Vector3(start[0], start[1], start[2]);
-          endPoint = new THREE.Vector3(end[0], end[1], end[2]);
-        }
-
-        // 円柱の高さと方向を計算
-        const height = startPoint.distanceTo(endPoint);
+        // 半径を先に計算（天端から中心位置を算出するため）
         let radius;
         if (shapeTypeName === 'Cylinder') {
           radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
@@ -149,6 +137,26 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         } else {
           radius = 0.05;
         }
+
+        let startPoint, endPoint;
+        if (hasDepthAttrs) {
+          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
+          // 管路の中心位置を計算するために、天端の深さから半径を引く
+          const startDepth = Number(obj.attributes.start_point_depth / 100);
+          const endDepth = Number(obj.attributes.end_point_depth / 100);
+          const startCenterY = (startDepth > 0 ? -startDepth : startDepth) - radius;
+          const endCenterY = (endDepth > 0 ? -endDepth : endDepth) - radius;
+          startPoint = new THREE.Vector3(start[0], startCenterY, start[1]);
+          endPoint = new THREE.Vector3(end[0], endCenterY, end[1]);
+        } else {
+          // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
+          // 頂点座標も天端を表すと仮定し、半径を引いて中心位置を計算
+          startPoint = new THREE.Vector3(start[0], start[2] - radius, start[1]);
+          endPoint = new THREE.Vector3(end[0], end[2] - radius, end[1]);
+        }
+
+        // 円柱の高さと方向を計算
+        const height = startPoint.distanceTo(endPoint);
         geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
       } else {
         // 頂点が不足している場合は簡易表示
@@ -230,17 +238,31 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
 
+        // 半径を先に計算（天端から中心位置を算出するため）
+        let radius;
+        if (shapeTypeName === 'Cylinder') {
+          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+          if (radius > 5) radius = radius / 1000;
+          radius = Math.max(radius, 0.05);
+        } else {
+          radius = 0.05;
+        }
+
         let startPoint, endPoint;
         if (hasDepthAttrs) {
+          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
+          // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          startPoint = new THREE.Vector3(start[0], startDepth > 0 ? -startDepth : startDepth, start[1]);
-          endPoint = new THREE.Vector3(end[0], endDepth > 0 ? -endDepth : endDepth, end[1]);
+          const startCenterY = startDepth > 0 ? -(startDepth - radius): startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth - radius): endDepth;
+          startPoint = new THREE.Vector3(start[0], startCenterY, -start[1]);
+          endPoint = new THREE.Vector3(end[0], endCenterY, -end[1]);
         } else {
           // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
-          // Three.js座標系: x, y, z
-          startPoint = new THREE.Vector3(start[0], start[2], start[1]);
-          endPoint = new THREE.Vector3(end[0], end[2], end[1]);
+          // 頂点座標も天端を表すと仮定し、半径を引いて中心位置を計算
+          startPoint = new THREE.Vector3(start[0], start[2] - radius, -start[1]);
+          endPoint = new THREE.Vector3(end[0], end[2] - radius, -end[1]);
         }
         // 円柱を正しい方向に回転
         const direction = endPoint.clone().sub(startPoint).normalize();
@@ -1378,12 +1400,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         distanceMeasurementRef.current.update();
       }
 
-      // 選択時のみComposerでレンダリング（アウトライン表示）、それ以外は通常レンダリング
-      if (outlinePassRef.current && outlinePassRef.current.selectedObjects.length > 0) {
-        composer.render();
-      } else {
-        renderer.render(scene, camera);
-      }
+      composer.render();
     };
     animate();
 

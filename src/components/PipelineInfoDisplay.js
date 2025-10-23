@@ -47,6 +47,35 @@ function PipelineInfoDisplay({
           ];
         }
 
+        // 半径を取得（メートル単位）
+        const getRadiusInMeters = () => {
+          if (attributes?.radius != null) {
+            let radius = Number(attributes.radius);
+            // radiusが大きい場合はmm単位と判断してm単位に変換
+            if (radius > 5) radius = radius / 1000;
+            return Math.max(radius, 0.05);
+          } else if (attributes?.diameter != null) {
+            let diameter = Number(attributes.diameter);
+            // diameterが大きい場合はmm単位と判断してm単位に変換
+            if (diameter > 5) diameter = diameter / 1000;
+            return Math.max(diameter / 2, 0.05);
+          }
+          return 0.05;
+        };
+
+        const radiusInMeters = getRadiusInMeters();
+
+        // 直径を取得（ミリメートル単位）
+        const getDiameterInMM = () => {
+          if (attributes?.diameter != null) {
+            return Number(attributes.diameter);
+          } else if (attributes?.radius != null) {
+            let radius = Number(attributes.radius);
+            return radius > 5 ? radius * 2 : radius * 2 * 1000;
+          }
+          return 0;
+        };
+
         // 長さの計算
         let length = 0;
         if (startPoint && endPoint) {
@@ -57,19 +86,27 @@ function PipelineInfoDisplay({
           );
         }
 
+        // 中心座標から天端（上端）の深さを計算
+        // center[2]やstartPoint[2]は管路の中心のY座標（Three.jsで計算済み）
+        // 天端 = 中心 + 半径
+        const getCoverDepth = (centerY) => {
+          if (centerY == null) return '';
+          return (-(centerY + radiusInMeters)).toFixed(3);
+        };
+
         const pipelineData = {
           形状: getShapeTypeName(),
           識別番号: feature_id || '',
           '東西[m]': center ? center[0].toFixed(3) : (startPoint ? startPoint[0].toFixed(3) : ''),
-          '上被り深さ[m]': center ? (-center[2]).toFixed(3) : (startPoint ? (-startPoint[2]).toFixed(3) : ''),
+          '上被り深さ[m]': center ? getCoverDepth(center[2]) : (startPoint ? getCoverDepth(startPoint[2]) : ''),
           '南北[m]': center ? center[1].toFixed(3) : (startPoint ? startPoint[1].toFixed(3) : ''),
-          '直径[mm]': attributes?.radius ? (attributes.radius / 2).toFixed(3) : (attributes?.diameter ? (attributes.diameter / 1000).toFixed(3) : ''),
+          '直径[mm]': getDiameterInMM().toFixed(0),
           '長さ[m]': length.toFixed(3),
           '端点1東西[m]': startPoint ? startPoint[0].toFixed(3) : '',
-          '端点1上被り深さ[m]': startPoint ? (-startPoint[2]).toFixed(3) : '',
+          '端点1上被り深さ[m]': startPoint ? getCoverDepth(startPoint[2]) : '',
           '端点1南北[m]': startPoint ? startPoint[1].toFixed(3) : '',
           '端点2東西[m]': endPoint ? endPoint[0].toFixed(3) : '',
-          '端点2上被り深さ[m]': endPoint ? (-endPoint[2]).toFixed(3) : '',
+          '端点2上被り深さ[m]': endPoint ? getCoverDepth(endPoint[2]) : '',
           '端点2南北[m]': endPoint ? endPoint[1].toFixed(3) : '',
           種別: attributes?.pipe_kind || '',
           材質: attributes?.material || ''

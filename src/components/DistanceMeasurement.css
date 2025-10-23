@@ -1,41 +1,22 @@
 .distance-measurement-display {
-  margin-top: 10px;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid #00ff00;
-  border-radius: 4px;
-  color: white;
-  font-family: 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 13px;
 }
 
 .measurement-title {
-  font-weight: bold;
-  font-size: 14px;
-  margin-bottom: 8px;
-  color: #00ff00;
-  border-bottom: 1px solid #00ff00;
-  padding-bottom: 4px;
+  font-size: 13px;
+  /* margin-bottom: 8px; */
+  /* padding-bottom: 4px; */
 }
 
 .measurement-details {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .measurement-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-}
-
-.measurement-row .label {
-  font-weight: bold;
-  color: #ffff00;
-  min-width: 50px;
 }
 
 .measurement-row .value {
@@ -43,22 +24,21 @@
 }
 
 .measurement-row .point {
-  color: #00ffff;
-  font-size: 11px;
+  font-size: 13px;
+  gap: 10px;
 }
 
 .measurement-row .distance {
-  color: #ff00ff;
-  font-weight: bold;
   margin-left: auto;
+  font-size: 13px;
 }
 
 /* ホバー効果 */
-.distance-measurement-display:hover {
+/* .distance-measurement-display:hover {
   background: rgba(0, 0, 0, 0.9);
   border-color: #00ff00;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
-}
+} */
 
 /* レスポンシブ対応 */
 /* @media (max-width: 768px) {

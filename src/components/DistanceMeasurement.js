@@ -36,6 +36,10 @@ class DistanceMeasurement {
     this.lineMidPoint = null;
     this.closestLineDirection = null;
     this.closestLineMidPoint = null;
+    
+    // テキストの位置情報（スケール調整用）
+    this.measurementTextPosition = null;
+    this.closestTextPosition = null;
 
     // 表示状態管理
     this.showClosest = true;   // 近接距離を表示
@@ -398,18 +402,21 @@ class DistanceMeasurement {
     });
 
     const textSprite = new THREE.Sprite(spriteMaterial);
-    // 線の上に配置（Y軸方向に0.5mオフセット）
-    textSprite.position.copy(position);
-    textSprite.position.y += 0.5;
-    // スケールを大きくする
-    textSprite.scale.set(8, 2, 1);
+    // 線の中心に配置
+    const textPosition = position.clone();
+    textSprite.position.copy(textPosition);
+    
+    // 初期スケール（カメラ距離に応じて動的に調整される）
+    textSprite.scale.set(2, 0.5, 1);
     
     // 線のタイプに応じて保存と表示状態を設定
     if (lineType === 'closest') {
       this.closestText = textSprite;
+      this.closestTextPosition = textPosition;
       textSprite.visible = this.showClosest;
     } else {
       this.measurementText = textSprite;
+      this.measurementTextPosition = textPosition;
       textSprite.visible = this.showSpecified;
     }
     
@@ -462,12 +469,12 @@ class DistanceMeasurement {
     // 計測結果のベース
     let measurementData = {
       pipeA: {
-        id: startData.id || '不明',
-        name: startData.attributes?.name || startData.attributes?.pipe_kind || '管路A'
+        id: startData.feature_id || '不明',
+        name:'管路A'
       },
       pipeB: {
-        id: endData.id || '不明',
-        name: endData.attributes?.name || endData.attributes?.pipe_kind || '管路B'
+        id: endData.feature_id || '不明',
+        name:'管路B'
       },
       specified: {
         pointA: specifiedPointA,
@@ -834,10 +841,36 @@ class DistanceMeasurement {
   }
 
   /**
-   * 毎フレーム更新（カメラ移動時に線を回転）
+   * 毎フレーム更新（カメラ移動時に線を回転とテキストスケール調整）
    */
   update() {
     this.updateLineRotation();
+    this.updateTextScale();
+  }
+
+  /**
+   * テキストのスケールをカメラ距離に応じて調整
+   */
+  updateTextScale() {
+    // 指定距離のテキストスケール更新
+    if (this.measurementText && this.measurementTextPosition) {
+      const distance = this.camera.position.distanceTo(this.measurementTextPosition);
+      // 距離に応じてスケールを調整（基準距離20mで基準スケール2）
+      const baseDistance = 20;
+      const baseScale = 2;
+      const scaleFactor = Math.max(0.5, Math.min(5, (distance / baseDistance) * baseScale));
+      this.measurementText.scale.set(scaleFactor, scaleFactor * 0.25, 1);
+    }
+
+    // 近接距離のテキストスケール更新
+    if (this.closestText && this.closestTextPosition) {
+      const distance = this.camera.position.distanceTo(this.closestTextPosition);
+      // 距離に応じてスケールを調整（基準距離20mで基準スケール2）
+      const baseDistance = 20;
+      const baseScale = 2;
+      const scaleFactor = Math.max(0.5, Math.min(5, (distance / baseDistance) * baseScale));
+      this.closestText.scale.set(scaleFactor, scaleFactor * 0.25, 1);
+    }
   }
 
   /**
@@ -922,6 +955,10 @@ class DistanceMeasurement {
     this.lineMidPoint = null;
     this.closestLineDirection = null;
     this.closestLineMidPoint = null;
+
+    // テキストの位置情報をクリア
+    this.measurementTextPosition = null;
+    this.closestTextPosition = null;
 
     // 計測結果をクリア
     this.measurementResult = null;
