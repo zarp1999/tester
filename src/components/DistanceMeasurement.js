@@ -25,6 +25,8 @@ class DistanceMeasurement {
     this.endPoint = null;    // 実際のクリック位置（終点）
     this.measurementLine = null;  // 指定距離の線（赤）
     this.closestLine = null;      // 近接距離の線（青）
+    this.measurementText = null;  // 指定距離のテキストスプライト
+    this.closestText = null;      // 近接距離のテキストスプライト
     this.measurementPoints = [];
     this.textMesh = null;
     this.previewLine = null; // プレビュー線
@@ -230,6 +232,14 @@ class DistanceMeasurement {
     if (this.measurementLine) {
       this.measurementLine.visible = this.showSpecified;
     }
+
+    // テキストの表示/非表示を更新
+    if (this.closestText) {
+      this.closestText.visible = this.showClosest;
+    }
+    if (this.measurementText) {
+      this.measurementText.visible = this.showSpecified;
+    }
   }
 
   /**
@@ -298,7 +308,7 @@ class DistanceMeasurement {
   }
 
   /**
-   * 計測線を描画（幅広い帯状の線、テキストを線の一部として埋め込み）
+   * 計測線を描画（幅広い帯状の線）
    * @param {THREE.Vector3} startPos - 開始位置
    * @param {THREE.Vector3} endPos - 終了位置
    * @param {number} distance - 距離
@@ -315,50 +325,10 @@ class DistanceMeasurement {
     const width = 0.15;  // 線の幅
     const geometry = new THREE.PlaneGeometry(length, width);
     
-    // テキスト付きのテクスチャを作成（線の幅方向に表示）
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    // ジオメトリのアスペクト比に合わせる: length(長) x width(0.3)
-    const aspectRatio = length / width;
-    canvas.width = 2048;  // 線の長さに対応（横方向）
-    canvas.height = Math.max(128, 2048 / aspectRatio); // 線の幅に対応（縦方向）
-    
-    // 背景を指定色で塗りつぶす
-    const bgColor = color === 'blue' ? 'rgba(0, 0, 255, 0.8)' : 'rgba(255, 0, 0, 0.8)';
-    context.fillStyle = bgColor;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // テキストを一行で描画（横書き、線のサイズに100%合わせる）
-    const text = `${distance.toFixed(3)}m`;
-    
-    // 回転後のサイズ：テキストの高さ = canvas.width に収まる必要がある
-    //              テキストの幅 = canvas.height に収まる必要がある
-    let fontSize = Math.floor(canvas.width * 0.6); // 初期サイズ60%
-    context.font = `Bold ${fontSize}px Arial`;
-    
-    // テキストの実際の幅を測定
-    let textMetrics = context.measureText(text);
-    let textWidth = textMetrics.width;
-    
-    // テキストが回転後に収まるように調整（canvas.heightに収まるか）
-    if (textWidth > canvas.height * 0.95) {
-      fontSize = Math.floor(fontSize * (canvas.height * 0.95) / textWidth);
-      context.font = `Bold ${fontSize}px Arial`;
-    }
-    
-    context.save();
-    context.translate(canvas.width / 2, canvas.height / 2);
-    context.rotate(Math.PI / 2); 
-    context.fillStyle = 'white';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(text, 0, 0);
-    context.restore();
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    
+    // 単色のマテリアルを作成
+    const colorValue = color === 'blue' ? 0x0000ff : 0xff0000;
     const material = new THREE.MeshBasicMaterial({
-      map: texture,
+      color: colorValue,
       transparent: true,
       opacity: 0.8,
       depthTest: false,
@@ -385,35 +355,37 @@ class DistanceMeasurement {
     this.updateLineRotation(lineType);
     
     this.scene.add(lineMesh);
+    
+    // 線の上にテキストを描画
+    this.drawDistanceTextAboveLine(midPoint, distance, color, lineType);
   }
 
   /**
-   * 距離テキストを描画（線の中に表示）
+   * 距離テキストを線の上に描画（スプライトで大きく表示）
+   * @param {THREE.Vector3} position - テキスト位置（線の中点）
+   * @param {number} distance - 距離
+   * @param {string} color - 線の色（'red' or 'blue'）
+   * @param {string} lineType - 線のタイプ（'specified' or 'closest'）
    */
-  drawDistanceText(startPos, endPos, distance) {
-    // 中点を計算
-    const midPoint = new THREE.Vector3()
-      .addVectors(startPos, endPos)
-      .multiplyScalar(0.5);
-
+  drawDistanceTextAboveLine(position, distance, color, lineType) {
     // テキストスプライトを作成
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 64;
+    canvas.width = 1024;
+    canvas.height = 256;
 
     // 背景を透明にする
     context.clearRect(0, 0, canvas.width, canvas.height);
 
     // テキストに影をつけて見やすくする
-    context.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    context.shadowBlur = 8;
-    context.shadowOffsetX = 2;
-    context.shadowOffsetY = 2;
+    context.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    context.shadowBlur = 12;
+    context.shadowOffsetX = 3;
+    context.shadowOffsetY = 3;
 
     // テキスト
     context.fillStyle = 'white';
-    context.font = 'Bold 28px Arial';
+    context.font = 'Bold 120px Arial';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillText(`${distance.toFixed(3)}m`, canvas.width / 2, canvas.height / 2);
@@ -425,11 +397,23 @@ class DistanceMeasurement {
       transparent: true
     });
 
-    this.textMesh = new THREE.Sprite(spriteMaterial);
-    this.textMesh.position.copy(midPoint);
-    // スケールを小さくして線の中に収まるようにする
-    this.textMesh.scale.set(3, 0.2, 1);
-    this.scene.add(this.textMesh);
+    const textSprite = new THREE.Sprite(spriteMaterial);
+    // 線の上に配置（Y軸方向に0.5mオフセット）
+    textSprite.position.copy(position);
+    textSprite.position.y += 0.5;
+    // スケールを大きくする
+    textSprite.scale.set(8, 2, 1);
+    
+    // 線のタイプに応じて保存と表示状態を設定
+    if (lineType === 'closest') {
+      this.closestText = textSprite;
+      textSprite.visible = this.showClosest;
+    } else {
+      this.measurementText = textSprite;
+      textSprite.visible = this.showSpecified;
+    }
+    
+    this.scene.add(textSprite);
   }
 
   /**
@@ -879,6 +863,16 @@ class DistanceMeasurement {
       this.measurementLine = null;
     }
 
+    // 指定距離のテキストを削除
+    if (this.measurementText) {
+      this.scene.remove(this.measurementText);
+      if (this.measurementText.material.map) {
+        this.measurementText.material.map.dispose();
+      }
+      this.measurementText.material.dispose();
+      this.measurementText = null;
+    }
+
     // 近接距離の計測線を削除（青）
     if (this.closestLine) {
       this.scene.remove(this.closestLine);
@@ -890,7 +884,17 @@ class DistanceMeasurement {
       this.closestLine = null;
     }
 
-    // テキストを削除
+    // 近接距離のテキストを削除
+    if (this.closestText) {
+      this.scene.remove(this.closestText);
+      if (this.closestText.material.map) {
+        this.closestText.material.map.dispose();
+      }
+      this.closestText.material.dispose();
+      this.closestText = null;
+    }
+
+    // 旧テキストを削除（互換性のため）
     if (this.textMesh) {
       this.scene.remove(this.textMesh);
       this.textMesh.material.map.dispose();
