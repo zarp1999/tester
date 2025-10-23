@@ -18,7 +18,7 @@ import './Scene3D.css';
  * - キー/マウスによるカメラ操作
  * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
  */
-function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes }) {
+function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -74,8 +74,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const [selectedObject, setSelectedObject] = useState(null);
   const [showGuides, setShowGuides] = useState(true);
   const [showPipes, setShowPipes] = useState(true);
-  const [showFloor, setShowFloor] = useState(true);
-  const [showBackground, setShowBackground] = useState(true);
+  const [showFloor, setShowFloor] = useState(!hideBackground);
+  const [showBackground, setShowBackground] = useState(!hideBackground);
 
   // 距離計測結果のstate
   const [measurementResult, setMeasurementResult] = useState(null);
@@ -207,20 +207,30 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       }
     }
 
-    const material = new THREE.MeshStandardMaterial({
-      color: colorHex,
-      metalness: 0.6,
-      roughness: 0.4,
-      transparent: opacity < 1,
-      opacity,
+    // 断面図モードの場合は、よりフラットで技術的な見た目にする
+    const material = hideBackground
+      ? new THREE.MeshLambertMaterial({
+          color: colorHex,
+          transparent: opacity < 1,
+          opacity,
+          flatShading: true,  // フラットシェーディングで断面図らしく
+          emissive: new THREE.Color(colorHex).multiplyScalar(0.2),  // 少し自己発光させて見やすく
+          emissiveIntensity: 0.3
+        })
+      : new THREE.MeshStandardMaterial({
+          color: colorHex,
+          metalness: 0.6,
+          roughness: 0.4,
+          transparent: opacity < 1,
+          opacity,
 
-      // // リアルな質感を追加
-      // envMapIntensity: 0.8,  // 環境マッピングの強度
+          // // リアルな質感を追加
+          // envMapIntensity: 0.8,  // 環境マッピングの強度
 
-      // // 深度感を出すために微妙な自己発光
-      // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
-      // emissiveIntensity: 0.05
-    });
+          // // 深度感を出すために微妙な自己発光
+          // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
+          // emissiveIntensity: 0.05
+        });
 
     const mesh = new THREE.Mesh(geometry, material);
 
@@ -948,11 +958,13 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    // 背景をSkyに変更（nullで透明に）
-    scene.background = null;
+    // 背景を設定（断面図モードの場合は白、通常モードはSkyコンポーネントが描画）
+    scene.background = hideBackground ? new THREE.Color(0xf5f5f5) : null;
 
-    // フォグを追加して深度感を出す
-    scene.fog = new THREE.Fog(0x8B7355, 20, 100);
+    // フォグを追加して深度感を出す（断面図モードでは無効）
+    if (!hideBackground) {
+      scene.fog = new THREE.Fog(0x8B7355, 20, 100);
+    }
     // カメラの作成
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -967,15 +979,32 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     cameraRef.current = camera;
 
     // レンダラーの作成
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      preserveDrawingBuffer: false,
+      powerPreference: "high-performance"
+    });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // ピクセル比率を制限
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     // トーンマッピング設定（EffectComposer使用時の色と明るさを正確に）
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+
+    // WebGLコンテキスト喪失のハンドリング
+    const handleContextLost = (event) => {
+      event.preventDefault();
+      console.warn('WebGL context lost. Preventing default behavior.');
+    };
+    
+    const handleContextRestored = () => {
+      console.log('WebGL context restored.');
+    };
+    
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
 
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -1120,12 +1149,24 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       scene,
       camera
     );
-    outlinePass.edgeStrength = 3.0; // アウトラインの強度
-    outlinePass.edgeGlow = 0.5; // アウトラインの発光
-    outlinePass.edgeThickness = 2.0; // アウトラインの太さ
-    outlinePass.pulsePeriod = 0; // 脈動効果なし
-    outlinePass.visibleEdgeColor.set('#ffff00'); // 黄色
-    outlinePass.hiddenEdgeColor.set('#ffaa00'); // オレンジ色
+    
+    // 断面図モードの場合は、より強調された輪郭線にする
+    if (hideBackground) {
+      outlinePass.edgeStrength = 5.0; // アウトラインの強度（断面図用）
+      outlinePass.edgeGlow = 0.0; // アウトラインの発光なし
+      outlinePass.edgeThickness = 3.5; // アウトラインの太さ（断面図用）
+      outlinePass.pulsePeriod = 0; // 脈動効果なし
+      outlinePass.visibleEdgeColor.set('#000000'); // 黒色（技術図面風）
+      outlinePass.hiddenEdgeColor.set('#666666'); // グレー
+    } else {
+      outlinePass.edgeStrength = 3.0; // アウトラインの強度
+      outlinePass.edgeGlow = 0.5; // アウトラインの発光
+      outlinePass.edgeThickness = 2.0; // アウトラインの太さ
+      outlinePass.pulsePeriod = 0; // 脈動効果なし
+      outlinePass.visibleEdgeColor.set('#ffff00'); // 黄色
+      outlinePass.hiddenEdgeColor.set('#ffaa00'); // オレンジ色
+    }
+    
     composer.addPass(outlinePass);
 
     // ガンマ補正パス（色と明るさを正確にレンダリング）
@@ -1400,31 +1441,92 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         distanceMeasurementRef.current.update();
       }
 
-      composer.render();
+      // レンダリング（エラーハンドリング付き）
+      try {
+        composer.render();
+      } catch (error) {
+        console.error('Rendering error:', error);
+        // エラー発生時はアニメーションを停止
+        return;
+      }
     };
     animate();
 
     // クリーンアップ
     return () => {
+      // mountRef.currentを一時変数に保存（null化される前に）
+      const currentMount = mountRef.current;
+      
+      // 距離計測のクリーンアップ（最初に実行）
+      if (distanceMeasurementRef.current) {
+        distanceMeasurementRef.current.dispose(currentMount);
+      }
+      
+      // イベントリスナーの削除
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      if (mountRef.current) {
-        mountRef.current.removeEventListener('mousemove', handleMouseMove);
-        mountRef.current.removeEventListener('mousedown', handleMouseDown);
-        mountRef.current.removeEventListener('mouseup', handleMouseUp);
-        mountRef.current.removeEventListener('click', handleClick);
-        if (renderer.domElement.parentNode === mountRef.current) {
-          mountRef.current.removeChild(renderer.domElement);
+      if (currentMount) {
+        currentMount.removeEventListener('mousemove', handleMouseMove);
+        currentMount.removeEventListener('mousedown', handleMouseDown);
+        currentMount.removeEventListener('mouseup', handleMouseUp);
+        currentMount.removeEventListener('click', handleClick);
+      }
+      
+      // コンポーネントのクリーンアップ
+      if (skyComponentRef.current) {
+        skyComponentRef.current.dispose();
+      }
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+      
+      // コンポーザーのクリーンアップ
+      if (composerRef.current) {
+        composerRef.current = null;
+      }
+      if (outlinePassRef.current) {
+        outlinePassRef.current = null;
+      }
+      
+      // シーン内のすべてのオブジェクトをクリーンアップ
+      if (scene) {
+        scene.traverse((object) => {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => {
+                if (material.map) material.map.dispose();
+                material.dispose();
+              });
+            } else {
+              if (object.material.map) object.material.map.dispose();
+              object.material.dispose();
+            }
+          }
+        });
+        scene.clear();
+      }
+      
+      // レンダラーのクリーンアップ
+      if (renderer) {
+        // レンダラーのdisposeでイベントリスナーも自動的にクリーンアップされます
+        if (currentMount && renderer.domElement.parentNode === currentMount) {
+          currentMount.removeChild(renderer.domElement);
+        }
+        renderer.dispose();
+        // forceContextLossはWebGL1のみで利用可能
+        if (renderer.forceContextLoss) {
+          renderer.forceContextLoss();
+        }
+        // WebGL2の場合
+        const gl = renderer.getContext();
+        if (gl && gl.getExtension('WEBGL_lose_context')) {
+          gl.getExtension('WEBGL_lose_context').loseContext();
         }
       }
-      // 距離計測のクリーンアップ
-      if (distanceMeasurementRef.current) {
-        distanceMeasurementRef.current.dispose(mountRef.current);
-      }
-      skyComponent.dispose();
-      controls.dispose();
-      renderer.dispose();
     };
     // }, [onCameraMove, onObjectClick]);
   }, [userPositions]);
@@ -1568,7 +1670,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 
       {/* 左上の管路情報 */}
-      {showGuides && (
+      {showGuides && !hideInfoPanel && (
         <div className="pipeline-info-text">
           ◆管路情報<br />
           左クリック: 管路情報を表示します<br />
