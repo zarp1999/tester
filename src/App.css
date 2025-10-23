@@ -1,10 +1,6 @@
 .App {
-  width: 95%;
-  height: 97%;
-  margin-left: 2.5%;
-  margin-right: 2.5%;
-  margin-top: 1.5%;
-  margin-bottom: 1.5%;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -100,5 +96,109 @@
 .retry-button:active {
   transform: translateY(0);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ナビゲーションメニュー */
+.navigation-menu {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
+.nav-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 30px;
+  max-width: 100%;
+}
+
+.nav-brand {
+  font-size: 20px;
+  font-weight: bold;
+  color: white;
+  letter-spacing: 0.5px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.nav-link.active {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.nav-icon {
+  font-size: 18px;
+}
+
+.nav-text {
+  white-space: nowrap;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+  .nav-container {
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+  }
+
+  .nav-brand {
+    font-size: 18px;
+  }
+
+  .nav-links {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .nav-link {
+    flex: 1;
+    justify-content: center;
+    padding: 12px 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-link {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .nav-icon {
+    font-size: 16px;
+  }
+
+  .nav-text {
+    display: none;
+  }
 }
 

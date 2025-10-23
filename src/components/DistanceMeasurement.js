@@ -23,23 +23,23 @@ class DistanceMeasurement {
     this.endPipe = null;
     this.startPoint = null;  // 実際のクリック位置（始点）
     this.endPoint = null;    // 実際のクリック位置（終点）
-    this.measurementLine = null;  // 指定距離の線（赤）
-    this.closestLine = null;      // 近接距離の線（青）
-    this.measurementText = null;  // 指定距離のテキストスプライト
-    this.closestText = null;      // 近接距離のテキストスプライト
+    this.measurementLines = [];  // 指定距離の線（赤）の配列
+    this.closestLines = [];      // 近接距離の線（青）の配列
+    this.measurementTexts = [];  // 指定距離のテキストスプライトの配列
+    this.closestTexts = [];      // 近接距離のテキストスプライトの配列
     this.measurementPoints = [];
     this.textMesh = null;
     this.previewLine = null; // プレビュー線
     
-    // 線の方向ベクトル（カメラ向きの回転用）
-    this.lineDirection = null;
-    this.lineMidPoint = null;
-    this.closestLineDirection = null;
-    this.closestLineMidPoint = null;
+    // 線の方向ベクトル（カメラ向きの回転用）- 配列で管理
+    this.lineDirections = [];
+    this.lineMidPoints = [];
+    this.closestLineDirections = [];
+    this.closestLineMidPoints = [];
     
-    // テキストの位置情報（スケール調整用）
-    this.measurementTextPosition = null;
-    this.closestTextPosition = null;
+    // テキストの位置情報（スケール調整用）- 配列で管理
+    this.measurementTextPositions = [];
+    this.closestTextPositions = [];
 
     // 表示状態管理
     this.showClosest = true;   // 近接距離を表示
@@ -62,9 +62,11 @@ class DistanceMeasurement {
    * イベントリスナーを追加
    */
   enable(domElement) {
-    domElement.addEventListener('mousedown', this.handleMouseDown);
-    domElement.addEventListener('mousemove', this.handleMouseMove);
-    domElement.addEventListener('mouseup', this.handleMouseUp);
+    if (domElement) {
+      domElement.addEventListener('mousedown', this.handleMouseDown);
+      domElement.addEventListener('mousemove', this.handleMouseMove);
+      domElement.addEventListener('mouseup', this.handleMouseUp);
+    }
     window.addEventListener('keydown', this.handleKeyDown);
   }
 
@@ -72,9 +74,11 @@ class DistanceMeasurement {
    * イベントリスナーを削除
    */
   disable(domElement) {
-    domElement.removeEventListener('mousedown', this.handleMouseDown);
-    domElement.removeEventListener('mousemove', this.handleMouseMove);
-    domElement.removeEventListener('mouseup', this.handleMouseUp);
+    if (domElement) {
+      domElement.removeEventListener('mousedown', this.handleMouseDown);
+      domElement.removeEventListener('mousemove', this.handleMouseMove);
+      domElement.removeEventListener('mouseup', this.handleMouseUp);
+    }
     window.removeEventListener('keydown', this.handleKeyDown);
   }
 
@@ -229,20 +233,24 @@ class DistanceMeasurement {
     this.showClosest = !this.showClosest;
     this.showSpecified = !this.showSpecified;
 
-    // 線の表示/非表示を更新
-    if (this.closestLine) {
-      this.closestLine.visible = this.showClosest;
+    // すべての近接線の表示/非表示を更新
+    for (const line of this.closestLines) {
+      if (line) line.visible = this.showClosest;
     }
-    if (this.measurementLine) {
-      this.measurementLine.visible = this.showSpecified;
+    
+    // すべての指定線の表示/非表示を更新
+    for (const line of this.measurementLines) {
+      if (line) line.visible = this.showSpecified;
     }
 
-    // テキストの表示/非表示を更新
-    if (this.closestText) {
-      this.closestText.visible = this.showClosest;
+    // すべての近接テキストの表示/非表示を更新
+    for (const text of this.closestTexts) {
+      if (text) text.visible = this.showClosest;
     }
-    if (this.measurementText) {
-      this.measurementText.visible = this.showSpecified;
+    
+    // すべての指定テキストの表示/非表示を更新
+    for (const text of this.measurementTexts) {
+      if (text) text.visible = this.showSpecified;
     }
   }
 
@@ -342,21 +350,22 @@ class DistanceMeasurement {
     const lineMesh = new THREE.Mesh(geometry, material);
     lineMesh.position.copy(midPoint);
     
-    // 線のタイプに応じて保存と表示状態を設定
+    // 線のタイプに応じて配列に追加し、表示状態を設定
     if (lineType === 'closest') {
-      this.closestLine = lineMesh;
-      this.closestLineDirection = direction.normalize();
-      this.closestLineMidPoint = midPoint.clone();
+      this.closestLines.push(lineMesh);
+      this.closestLineDirections.push(direction.normalize());
+      this.closestLineMidPoints.push(midPoint.clone());
       lineMesh.visible = this.showClosest;  // 表示状態を反映
     } else {
-      this.measurementLine = lineMesh;
-      this.lineDirection = direction.normalize();
-      this.lineMidPoint = midPoint.clone();
+      this.measurementLines.push(lineMesh);
+      this.lineDirections.push(direction.normalize());
+      this.lineMidPoints.push(midPoint.clone());
       lineMesh.visible = this.showSpecified;  // 表示状態を反映
     }
     
     // 初期回転を設定
-    this.updateLineRotation(lineType);
+    const index = lineType === 'closest' ? this.closestLines.length - 1 : this.measurementLines.length - 1;
+    this.updateSingleLineRotation(lineType, index);
     
     this.scene.add(lineMesh);
     
@@ -409,14 +418,14 @@ class DistanceMeasurement {
     // 初期スケール（カメラ距離に応じて動的に調整される）
     textSprite.scale.set(2, 0.5, 1);
     
-    // 線のタイプに応じて保存と表示状態を設定
+    // 線のタイプに応じて配列に追加し、表示状態を設定
     if (lineType === 'closest') {
-      this.closestText = textSprite;
-      this.closestTextPosition = textPosition;
+      this.closestTexts.push(textSprite);
+      this.closestTextPositions.push(textPosition);
       textSprite.visible = this.showClosest;
     } else {
-      this.measurementText = textSprite;
-      this.measurementTextPosition = textPosition;
+      this.measurementTexts.push(textSprite);
+      this.measurementTextPositions.push(textPosition);
       textSprite.visible = this.showSpecified;
     }
     
@@ -784,31 +793,29 @@ class DistanceMeasurement {
 
   /**
    * 線の回転を更新（カメラの方向に向ける）
-   * @param {string} lineType - 'specified' または 'closest' または undefined（両方）
    */
-  updateLineRotation(lineType) {
-    // lineTypeが指定されていない場合は両方を更新
-    if (!lineType || lineType === 'specified') {
-      this.updateSingleLineRotation(
-        this.measurementLine,
-        this.lineDirection,
-        this.lineMidPoint
-      );
+  updateLineRotation() {
+    // すべての指定距離の線を更新
+    for (let i = 0; i < this.measurementLines.length; i++) {
+      this.updateSingleLineRotation('specified', i);
     }
     
-    if (!lineType || lineType === 'closest') {
-      this.updateSingleLineRotation(
-        this.closestLine,
-        this.closestLineDirection,
-        this.closestLineMidPoint
-      );
+    // すべての近接距離の線を更新
+    for (let i = 0; i < this.closestLines.length; i++) {
+      this.updateSingleLineRotation('closest', i);
     }
   }
 
   /**
    * 単一の線の回転を更新
+   * @param {string} lineType - 'specified' または 'closest'
+   * @param {number} index - 配列内のインデックス
    */
-  updateSingleLineRotation(line, lineDirection, lineMidPoint) {
+  updateSingleLineRotation(lineType, index) {
+    const line = lineType === 'closest' ? this.closestLines[index] : this.measurementLines[index];
+    const lineDirection = lineType === 'closest' ? this.closestLineDirections[index] : this.lineDirections[index];
+    const lineMidPoint = lineType === 'closest' ? this.closestLineMidPoints[index] : this.lineMidPoints[index];
+    
     if (!line || !lineDirection || !lineMidPoint) {
       return;
     }
@@ -852,24 +859,31 @@ class DistanceMeasurement {
    * テキストのスケールをカメラ距離に応じて調整
    */
   updateTextScale() {
-    // 指定距離のテキストスケール更新
-    if (this.measurementText && this.measurementTextPosition) {
-      const distance = this.camera.position.distanceTo(this.measurementTextPosition);
-      // 距離に応じてスケールを調整（基準距離20mで基準スケール2）
-      const baseDistance = 20;
-      const baseScale = 2;
-      const scaleFactor = Math.max(0.5, Math.min(5, (distance / baseDistance) * baseScale));
-      this.measurementText.scale.set(scaleFactor, scaleFactor * 0.25, 1);
+    const baseDistance = 20;
+    const baseScale = 2;
+    const minScale = 0.5;
+    const maxScale = 5;
+    
+    // すべての指定距離のテキストスケール更新
+    for (let i = 0; i < this.measurementTexts.length; i++) {
+      const text = this.measurementTexts[i];
+      const position = this.measurementTextPositions[i];
+      if (text && position) {
+        const distance = this.camera.position.distanceTo(position);
+        const scaleFactor = Math.max(minScale, Math.min(maxScale, (distance / baseDistance) * baseScale));
+        text.scale.set(scaleFactor, scaleFactor * 0.25, 1);
+      }
     }
 
-    // 近接距離のテキストスケール更新
-    if (this.closestText && this.closestTextPosition) {
-      const distance = this.camera.position.distanceTo(this.closestTextPosition);
-      // 距離に応じてスケールを調整（基準距離20mで基準スケール2）
-      const baseDistance = 20;
-      const baseScale = 2;
-      const scaleFactor = Math.max(0.5, Math.min(5, (distance / baseDistance) * baseScale));
-      this.closestText.scale.set(scaleFactor, scaleFactor * 0.25, 1);
+    // すべての近接距離のテキストスケール更新
+    for (let i = 0; i < this.closestTexts.length; i++) {
+      const text = this.closestTexts[i];
+      const position = this.closestTextPositions[i];
+      if (text && position) {
+        const distance = this.camera.position.distanceTo(position);
+        const scaleFactor = Math.max(minScale, Math.min(maxScale, (distance / baseDistance) * baseScale));
+        text.scale.set(scaleFactor, scaleFactor * 0.25, 1);
+      }
     }
   }
 
@@ -885,47 +899,55 @@ class DistanceMeasurement {
       this.endPipe = null;
     }
 
-    // 指定距離の計測線を削除（赤）
-    if (this.measurementLine) {
-      this.scene.remove(this.measurementLine);
-      this.measurementLine.geometry.dispose();
-      if (this.measurementLine.material.map) {
-        this.measurementLine.material.map.dispose();
+    // すべての指定距離の計測線を削除（赤）
+    this.measurementLines.forEach(line => {
+      if (line) {
+        this.scene.remove(line);
+        line.geometry.dispose();
+        if (line.material.map) {
+          line.material.map.dispose();
+        }
+        line.material.dispose();
       }
-      this.measurementLine.material.dispose();
-      this.measurementLine = null;
-    }
+    });
+    this.measurementLines = [];
 
-    // 指定距離のテキストを削除
-    if (this.measurementText) {
-      this.scene.remove(this.measurementText);
-      if (this.measurementText.material.map) {
-        this.measurementText.material.map.dispose();
+    // すべての指定距離のテキストを削除
+    this.measurementTexts.forEach(text => {
+      if (text) {
+        this.scene.remove(text);
+        if (text.material.map) {
+          text.material.map.dispose();
+        }
+        text.material.dispose();
       }
-      this.measurementText.material.dispose();
-      this.measurementText = null;
-    }
+    });
+    this.measurementTexts = [];
 
-    // 近接距離の計測線を削除（青）
-    if (this.closestLine) {
-      this.scene.remove(this.closestLine);
-      this.closestLine.geometry.dispose();
-      if (this.closestLine.material.map) {
-        this.closestLine.material.map.dispose();
+    // すべての近接距離の計測線を削除（青）
+    this.closestLines.forEach(line => {
+      if (line) {
+        this.scene.remove(line);
+        line.geometry.dispose();
+        if (line.material.map) {
+          line.material.map.dispose();
+        }
+        line.material.dispose();
       }
-      this.closestLine.material.dispose();
-      this.closestLine = null;
-    }
+    });
+    this.closestLines = [];
 
-    // 近接距離のテキストを削除
-    if (this.closestText) {
-      this.scene.remove(this.closestText);
-      if (this.closestText.material.map) {
-        this.closestText.material.map.dispose();
+    // すべての近接距離のテキストを削除
+    this.closestTexts.forEach(text => {
+      if (text) {
+        this.scene.remove(text);
+        if (text.material.map) {
+          text.material.map.dispose();
+        }
+        text.material.dispose();
       }
-      this.closestText.material.dispose();
-      this.closestText = null;
-    }
+    });
+    this.closestTexts = [];
 
     // 旧テキストを削除（互換性のため）
     if (this.textMesh) {
@@ -951,14 +973,14 @@ class DistanceMeasurement {
     this.endPoint = null;
 
     // 線の方向情報をクリア
-    this.lineDirection = null;
-    this.lineMidPoint = null;
-    this.closestLineDirection = null;
-    this.closestLineMidPoint = null;
+    this.lineDirections = [];
+    this.lineMidPoints = [];
+    this.closestLineDirections = [];
+    this.closestLineMidPoints = [];
 
     // テキストの位置情報をクリア
-    this.measurementTextPosition = null;
-    this.closestTextPosition = null;
+    this.measurementTextPositions = [];
+    this.closestTextPositions = [];
 
     // 計測結果をクリア
     this.measurementResult = null;
