@@ -1,6 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import InfiniteGridHelper from './InfiniteGridHelper';
@@ -33,9 +38,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
 
-  // アウトライン表示用のref（カスタムシェーダー方式）
-  const hoveredOutlineMeshRef = useRef(null);
-  const selectedOutlineMeshRef = useRef(null);
+  // アウトライン表示用のref
+  const composerRef = useRef(null);
+  const outlinePassRef = useRef(null);
 
   // ドラッグ機能用のref
   const isDragging = useRef(false);
@@ -77,65 +82,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
   // オブジェクトの元データを保存（復元機能用）
   const originalObjectsData = useRef({});
-
-  /**
-   * アウトライン用のシェーダーマテリアルを作成（軽量・高速）
-   */
-  const createOutlineMaterial = (color = 0xffff00, thickness = 0.05) => {
-    return new THREE.ShaderMaterial({
-      vertexShader: `
-        uniform float outlineThickness;
-        void main() {
-          vec3 newPosition = position + normal * outlineThickness;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 outlineColor;
-        void main() {
-          gl_FragColor = vec4(outlineColor, 1.0);
-        }
-      `,
-      uniforms: {
-        outlineThickness: { value: thickness },
-        outlineColor: { value: new THREE.Color(color) }
-      },
-      side: THREE.BackSide
-    });
-  };
-
-  /**
-   * アウトラインメッシュを作成して追加
-   */
-  const addOutlineMesh = (targetMesh, outlineMeshRef, color = 0xffff00) => {
-    if (!sceneRef.current || !targetMesh) return;
-
-    // 既存のアウトラインを削除
-    removeOutlineMesh(outlineMeshRef);
-
-    // 新しいアウトラインメッシュを作成
-    const outlineMaterial = createOutlineMaterial(color, 0.1);
-    const outlineMesh = new THREE.Mesh(targetMesh.geometry, outlineMaterial);
-    
-    outlineMesh.position.copy(targetMesh.position);
-    outlineMesh.rotation.copy(targetMesh.rotation);
-    outlineMesh.scale.copy(targetMesh.scale);
-    outlineMesh.matrixAutoUpdate = targetMesh.matrixAutoUpdate;
-    
-    sceneRef.current.add(outlineMesh);
-    outlineMeshRef.current = outlineMesh;
-  };
-
-  /**
-   * アウトラインメッシュを削除
-   */
-  const removeOutlineMesh = (outlineMeshRef) => {
-    if (outlineMeshRef.current && sceneRef.current) {
-      sceneRef.current.remove(outlineMeshRef.current);
-      outlineMeshRef.current.material.dispose();
-      outlineMeshRef.current = null;
-    }
-  };
 
   // 3Dオブジェクトの作成（shape/color対応）
   /**
@@ -682,8 +628,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         setSelectedObject(clickedObject.userData.objectData);
         selectedMeshRef.current = clickedObject;
 
-        // 選択時のアウトライン表示を更新（黄色）
-        addOutlineMesh(clickedObject, selectedOutlineMeshRef, 0xffff00);
+        // アウトライン表示を更新
+        if (outlinePassRef.current) {
+          outlinePassRef.current.selectedObjects = [clickedObject];
+        }
       }
     } else {
       // オブジェクト以外をクリックしても選択状態は維持
@@ -778,7 +726,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         selectedMeshRef.current = newMesh;
 
         // アウトライン表示を更新
-        addOutlineMesh(newMesh, selectedOutlineMeshRef, 0xffff00);
+        if (outlinePassRef.current) {
+          outlinePassRef.current.selectedObjects = [newMesh];
+        }
 
         setSelectedObject(newObjectData);
       }
@@ -814,8 +764,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       setSelectedObject(null);
 
       // アウトラインをクリア
-      removeOutlineMesh(selectedOutlineMeshRef);
-      removeOutlineMesh(hoveredOutlineMeshRef);
+      if (outlinePassRef.current) {
+        outlinePassRef.current.selectedObjects = [];
+      }
     }
   };
 
@@ -1134,6 +1085,34 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     soil.receiveShadow = true;
     scene.add(soil);
 
+    // EffectComposerとOutlinePassの設定
+    const composer = new EffectComposer(renderer);
+
+    // 基本レンダリングパス
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    // アウトラインパス
+    const outlinePass = new OutlinePass(
+      new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
+      scene,
+      camera
+    );
+    outlinePass.edgeStrength = 3.0; // アウトラインの強度
+    outlinePass.edgeGlow = 0.5; // アウトラインの発光
+    outlinePass.edgeThickness = 2.0; // アウトラインの太さ
+    outlinePass.pulsePeriod = 0; // 脈動効果なし
+    outlinePass.visibleEdgeColor.set('#ffff00'); // 黄色
+    outlinePass.hiddenEdgeColor.set('#ffaa00'); // オレンジ色
+    composer.addPass(outlinePass);
+
+    // ガンマ補正パス（色と明るさを正確にレンダリング）
+    const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
+    composer.addPass(gammaCorrectionPass);
+
+    composerRef.current = composer;
+    outlinePassRef.current = outlinePass;
+
     // 距離計測の初期化
     const distanceMeasurement = new DistanceMeasurement(
       scene,
@@ -1161,6 +1140,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      composer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
     };
     window.addEventListener('resize', handleResize);
 
@@ -1303,8 +1283,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           setSelectedObject(null);
           selectedMeshRef.current = null;
           // アウトラインをクリア
-          removeOutlineMesh(selectedOutlineMeshRef);
-          removeOutlineMesh(hoveredOutlineMeshRef);
+          if (outlinePassRef.current) {
+            outlinePassRef.current.selectedObjects = [];
+          }
         }
         keysPressed.current['escape'] = false;
       }
@@ -1354,7 +1335,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         // 前回ホバーしていたオブジェクトをクリア
         if (hoveredObjectRef.current) {
           document.body.style.cursor = 'default';
-          removeOutlineMesh(hoveredOutlineMeshRef);
           hoveredObjectRef.current = null;
         }
 
@@ -1364,8 +1344,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           if (hoveredObject !== selectedMeshRef.current) {
             document.body.style.cursor = 'pointer';
             hoveredObjectRef.current = hoveredObject;
-            // ホバー時のアウトライン表示（オレンジ色）
-            addOutlineMesh(hoveredObject, hoveredOutlineMeshRef, 0xffaa00);
           }
         }
       }
@@ -1400,8 +1378,12 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         distanceMeasurementRef.current.update();
       }
 
-      // 通常レンダリング（カスタムシェーダーでアウトライン表示）
-      renderer.render(scene, camera);
+      // 選択時のみComposerでレンダリング（アウトライン表示）、それ以外は通常レンダリング
+      if (outlinePassRef.current && outlinePassRef.current.selectedObjects.length > 0) {
+        composer.render();
+      } else {
+        renderer.render(scene, camera);
+      }
     };
     animate();
 
@@ -1423,9 +1405,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       if (distanceMeasurementRef.current) {
         distanceMeasurementRef.current.dispose(mountRef.current);
       }
-      // アウトラインメッシュのクリーンアップ
-      removeOutlineMesh(selectedOutlineMeshRef);
-      removeOutlineMesh(hoveredOutlineMeshRef);
       skyComponent.dispose();
       controls.dispose();
       renderer.dispose();
