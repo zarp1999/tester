@@ -51,6 +51,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   // 距離計測用のref
   const distanceMeasurementRef = useRef(null);
 
+  // マウス移動フラグ（パフォーマンス最適化用）
+  const mouseMovedRef = useRef(false);
+
   // カメラ位置情報のstate
   const [cameraInfo, setCameraInfo] = useState({
     x: 20.0,
@@ -407,6 +410,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const rect = mountRef.current.getBoundingClientRect();
     mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    // マウスが動いたことをフラグで記録（パフォーマンス最適化）
+    mouseMovedRef.current = true;
 
     // 左Shiftキーが押されている場合は距離計測を優先（管路ドラッグを無効化）
     if (event.shiftKey) {
@@ -1315,34 +1321,42 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         keysPressed.current['k'] = false;
       }
 
-      // レイキャスティングでホバー検出
-      raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const intersects = raycasterRef.current.intersectObjects(
-        Object.values(objectsRef.current),
-        false
-      );
+      // レイキャスティングでホバー検出（マウス移動時のみ実行してパフォーマンス改善）
+      if (mouseMovedRef.current) {
+        mouseMovedRef.current = false; // フラグをリセット
 
-      // 前回ホバーしていたオブジェクトをリセット（選択中は除外）
-      if (hoveredObjectRef.current) {
-        if (hoveredObjectRef.current !== selectedMeshRef.current) {
-          hoveredObjectRef.current.material.emissive.setHex(0x000000);
-          hoveredObjectRef.current.material.emissiveIntensity = 0;
-        }
-        document.body.style.cursor = 'default';
-        hoveredObjectRef.current = null;
-      }
+        raycasterRef.current.setFromCamera(mouseRef.current, camera);
+        const intersects = raycasterRef.current.intersectObjects(
+          Object.values(objectsRef.current),
+          false
+        );
 
-      // 新しくホバーしたオブジェクトを設定（選択中は除外）
-      if (intersects.length > 0) {
-        const hoveredObject = intersects[0].object;
-        if (hoveredObject !== selectedMeshRef.current) {
-          hoveredObject.material.emissive.setHex(
-            new THREE.Color(hoveredObject.userData.originalColor).getHex()
-          );
-          hoveredObject.material.emissiveIntensity = 0.3;
+        // 前回ホバーしていたオブジェクトをクリア
+        if (hoveredObjectRef.current) {
+          document.body.style.cursor = 'default';
+          hoveredObjectRef.current = null;
         }
-        document.body.style.cursor = 'pointer';
-        hoveredObjectRef.current = hoveredObject;
+
+        // 新しくホバーしたオブジェクトを設定（選択中は除外）
+        if (intersects.length > 0) {
+          const hoveredObject = intersects[0].object;
+          if (hoveredObject !== selectedMeshRef.current) {
+            document.body.style.cursor = 'pointer';
+            hoveredObjectRef.current = hoveredObject;
+          }
+        }
+
+        // OutlinePassに選択中とホバー中のオブジェクトを設定
+        if (outlinePassRef.current) {
+          const objectsToOutline = [];
+          if (selectedMeshRef.current) {
+            objectsToOutline.push(selectedMeshRef.current);
+          }
+          if (hoveredObjectRef.current && hoveredObjectRef.current !== selectedMeshRef.current) {
+            objectsToOutline.push(hoveredObjectRef.current);
+          }
+          outlinePassRef.current.selectedObjects = objectsToOutline;
+        }
       }
 
       // カメラ位置情報を更新（位置または回転に変化があった場合のみ）
@@ -1375,8 +1389,13 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         distanceMeasurementRef.current.update();
       }
 
-      // Composerでレンダリングしてアウトラインエフェクトを適用
-      composer.render();
+      // アウトライン表示が必要な場合のみComposerでレンダリング（パフォーマンス最適化）
+      if (outlinePassRef.current && outlinePassRef.current.selectedObjects.length > 0) {
+        composer.render();
+      } else {
+        // 通常レンダリング（高速）
+        renderer.render(scene, camera);
+      }
     };
     animate();
 
