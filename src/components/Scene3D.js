@@ -18,7 +18,7 @@ import './Scene3D.css';
  * - キー/マウスによるカメラ操作
  * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
  */
-function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false }) {
+function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -1528,7 +1528,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         }
       }
     };
-    // }, [onCameraMove, onObjectClick]);
   }, [userPositions]);
 
   // オブジェクトの作成（初回のみ）

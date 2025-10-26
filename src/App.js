@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import './App.css';
 import Scene3DView from './components/views/Scene3DView';
 import CrossSectionView from './components/views/CrossSectionView';
@@ -14,7 +14,6 @@ function App() {
   const [shapeTypes, setShapeTypes] = useState(null);
   const [sourceTypes, setSourceTypes] = useState(null);
   const [userPositions, setUserPositions] = useState(null);
-  const [selectedObject, setSelectedObject] = useState(null);
   const [loadingError, setLoadingError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -58,16 +57,6 @@ function App() {
     loadData();
   }, []);
 
-  const handleObjectClick = (object) => {
-    setSelectedObject(object);
-  };
-
-
-  const handleCameraPositionChange = (positionData) => {
-    console.log('カメラ位置変更:', positionData);
-    // 将来的にはここでAPIを呼び出してデータを取得
-  };
-
   const handleRetry = () => {
     window.location.reload();
   };
@@ -95,84 +84,41 @@ function App() {
   }
 
   return (
-    <Router>
-      <div className="App">
-        {/* ナビゲーションメニュー */}
-        <Navigation />
-        
-        {/* メインコンテンツエリア */}
-        <div className="main-content">
-          <div className="scene-container">
-            <Routes>
-              {/* 3Dシーンビュー */}
-              <Route 
-                path="/" 
-                element={
-                  <Scene3DView
-                    cityJsonData={cityJsonData}
-                    onObjectClick={handleObjectClick}
-                    onCameraMove={handleCameraPositionChange}
-                    userPositions={userPositions}
-                    shapeTypes={shapeTypes}
-                    layerData={layerData}
-                    sourceTypes={sourceTypes}
-                  />
-                } 
-              />
-              
-              {/* 断面図生成ビュー */}
-              <Route 
-                path="/cross-section" 
-                element={
-                  <CrossSectionView
-                    cityJsonData={cityJsonData}
-                    onObjectClick={handleObjectClick}
-                    onCameraMove={handleCameraPositionChange}
-                    userPositions={userPositions}
-                    shapeTypes={shapeTypes}
-                    layerData={layerData}
-                    sourceTypes={sourceTypes}
-                  />
-                } 
-              />
-            </Routes>
-          </div>
+    <div className="App">
+      <div className="main-content">
+        <div className="scene-container">
+          <Routes>
+            {/* 3Dシーンビュー */}
+            <Route 
+              path="/" 
+              element={
+                <Scene3DView
+                  cityJsonData={cityJsonData}
+                  userPositions={userPositions}
+                  shapeTypes={shapeTypes}
+                  layerData={layerData}
+                  sourceTypes={sourceTypes}
+                />
+              } 
+            />
+            
+            {/* 断面図生成ビュー */}
+            <Route 
+              path="/cross-section" 
+              element={
+                <CrossSectionView
+                  cityJsonData={cityJsonData}
+                  userPositions={userPositions}
+                  shapeTypes={shapeTypes}
+                  layerData={layerData}
+                  sourceTypes={sourceTypes}
+                />
+              } 
+            />
+          </Routes>
         </div>
       </div>
-    </Router>
-  );
-}
-
-/**
- * ナビゲーションメニューコンポーネント
- */
-function Navigation() {
-  const location = useLocation();
-  
-  return (
-    <nav className="navigation-menu">
-      <div className="nav-container">
-        <div className="nav-brand">
-          管路ビューア
-        </div>
-        <div className="nav-links">
-          <Link 
-            to="/" 
-            className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
-          >
-            <span className="nav-icon">🗺️</span>
-            <span className="nav-text">3Dシーン</span>
-          </Link>
-          <Link 
-            to="/cross-section" 
-            className={`nav-link ${location.pathname === '/cross-section' ? 'active' : ''}`}
-          >
-            <span className="nav-icon">📐</span>
-            <span className="nav-text">断面図生成</span>
-          </Link>
-        </div>
-      </div>
-    </nav>
+    </div>
   );
 }
 
