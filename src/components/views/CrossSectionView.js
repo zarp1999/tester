@@ -9,82 +9,23 @@ import './CrossSectionView.css';
  * - 将来的に断面図生成専用の機能を追加予定
  */
 function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes }) {
-  const [selectedPipelines, setSelectedPipelines] = useState([]);
-  const [crossSectionData, setCrossSectionData] = useState(null);
-
-  // 断面図生成ハンドラー
-  const handleGenerateCrossSection = () => {
-    if (selectedPipelines.length < 2) {
-      alert('断面図を生成するには、少なくとも2つの管路を選択してください。');
-      return;
-    }
-    
-    // TODO: 断面図生成ロジックを実装
-    console.log('断面図生成:', selectedPipelines);
-    setCrossSectionData({
-      pipelines: selectedPipelines,
-      generatedAt: new Date().toISOString()
-    });
-  };
-
-  // 選択クリア
-  const handleClearSelection = () => {
-    setSelectedPipelines([]);
-    setCrossSectionData(null);
-  };
 
   return (
     <div className="cross-section-view">
       {/* 断面図生成用のUIパネル */}
       <div className="cross-section-panel">
         <div className="panel-header">
-          ◆断面図生成
-        </div>
-        
-        <div className="panel-content">
-          <div className="info-section">
-            管路をクリックして選択してください<br />
-            選択中: {selectedPipelines.length}本
-          </div>
-
-          {selectedPipelines.length > 0 && (
-            <div className="selected-pipelines">
-              選択された管路:
-              <ul>
-                {selectedPipelines.map((pipe, index) => (
-                  <li key={pipe.feature_id || index}>
-                    {pipe.attributes?.pipe_kind || '管路'} 
-                    (ID: {pipe.feature_id || '不明'})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="action-buttons">
-            <button 
-              className="generate-button"
-              onClick={handleGenerateCrossSection}
-              disabled={selectedPipelines.length < 2}
-            >
-              断面図を生成
-            </button>
-            <button 
-              className="clear-button"
-              onClick={handleClearSelection}
-              disabled={selectedPipelines.length === 0}
-            >
-              選択をクリア
-            </button>
-          </div>
-
-          {crossSectionData && (
-            <div className="cross-section-result">
-              断面図生成結果<br />
-              生成時刻: {new Date(crossSectionData.generatedAt).toLocaleString('ja-JP')}<br />
-              <span className="note">※ 断面図生成機能は開発中です</span>
-            </div>
-          )}
+          ◆断面<br />
+          左クリック:中心軸に垂直な鉛直面による断面を表示します<br />
+          左ドラッグ: 始点終点を含む鉛直面による断面を表示します<br />
+          BSキー: 原面をクリア<br />
+          ◆離隔計測<br />
+          左Shift+左ドラッグ: 断面の間の最近接距離を計測します<br />
+          ESCキー: 離隔をクリア<br />
+          ◆表示切り替え<br />
+          1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br />
+          Space: 透視投影・正射投影 マウスホイール:拡大縮小 +左Ctrlキー:低達<br />
+          ◆離隔計測結果
         </div>
       </div>
 
@@ -97,6 +38,7 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
         sourceTypes={sourceTypes}
         hideInfoPanel={true}
         hideBackground={true}
+        enableCrossSectionMode={true}
       />
     </div>
   );

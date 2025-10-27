@@ -30,13 +30,13 @@ class DistanceMeasurement {
     this.measurementPoints = [];
     this.textMesh = null;
     this.previewLine = null; // プレビュー線
-    
+
     // 線の方向ベクトル（カメラ向きの回転用）- 配列で管理
     this.lineDirections = [];
     this.lineMidPoints = [];
     this.closestLineDirections = [];
     this.closestLineMidPoints = [];
-    
+
     // テキストの位置情報（スケール調整用）- 配列で管理
     this.measurementTextPositions = [];
     this.closestTextPositions = [];
@@ -62,26 +62,36 @@ class DistanceMeasurement {
    * イベントリスナーを追加
    */
   enable(domElement) {
-    if (domElement) {
-      domElement.addEventListener('mousedown', this.handleMouseDown);
-      domElement.addEventListener('mousemove', this.handleMouseMove);
-      domElement.addEventListener('mouseup', this.handleMouseUp);
+    if (domElement && domElement.addEventListener) {
+      try {
+        domElement.addEventListener('mousedown', this.handleMouseDown);
+        domElement.addEventListener('mousemove', this.handleMouseMove);
+        domElement.addEventListener('mouseup', this.handleMouseUp);
+      } catch (error) {
+        console.error('DOMイベントリスナーの追加でエラー:', error);
+      }
     }
-    window.addEventListener('keydown', this.handleKeyDown);
+    try {
+      window.addEventListener('keydown', this.handleKeyDown);
+    } catch (error) {
+      console.error('windowイベントリスナーの追加でエラー:', error);
+    }
   }
 
   /**
    * イベントリスナーを削除
    */
   disable(domElement) {
-    if (domElement) {
-      domElement.removeEventListener('mousedown', this.handleMouseDown);
-      domElement.removeEventListener('mousemove', this.handleMouseMove);
-      domElement.removeEventListener('mouseup', this.handleMouseUp);
+    if (domElement && domElement.removeEventListener) {
+      try {
+        domElement.removeEventListener('mousedown', this.handleMouseDown);
+        domElement.removeEventListener('mousemove', this.handleMouseMove);
+        domElement.removeEventListener('mouseup', this.handleMouseUp);
+      } catch (error) {
+        console.error('DOMイベントリスナーの削除でエラー:', error);
+      }
     }
-    window.removeEventListener('keydown', this.handleKeyDown);
   }
-
   /**
    * マウスダウンハンドラー
    */
@@ -104,7 +114,7 @@ class DistanceMeasurement {
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
       const clickedPoint = intersects[0].point; // 実際の交点
-      
+
       if (clickedObject.userData.objectData) {
         this.isMeasuring = true;
         this.startPipe = clickedObject;
@@ -123,7 +133,7 @@ class DistanceMeasurement {
 
     // 現在のマウス位置で交点を計算
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
-    
+
     // まず管路との交点を試みる
     const pipeIntersects = this.raycasterRef.intersectObjects(
       Object.values(this.objectsRef.current),
@@ -143,7 +153,7 @@ class DistanceMeasurement {
       const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.startPoint.y);
       const planeIntersect = new THREE.Vector3();
       this.raycasterRef.ray.intersectPlane(plane, planeIntersect);
-      
+
       // 交点が始点から一定距離内の場合のみ使用（遠くに飛ばないように）
       if (planeIntersect) {
         const distance = this.startPoint.distanceTo(planeIntersect);
@@ -179,7 +189,7 @@ class DistanceMeasurement {
 
     // 現在のマウス位置で交点を計算
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
-    
+
     // 管路との交点のみを検出
     const pipeIntersects = this.raycasterRef.intersectObjects(
       Object.values(this.objectsRef.current),
@@ -190,12 +200,12 @@ class DistanceMeasurement {
     if (pipeIntersects.length > 0) {
       const clickedObject = pipeIntersects[0].object;
       const clickedPoint = pipeIntersects[0].point;
-      
+
       // 終点も管路オブジェクトで、始点とは異なる管路である必要がある
       if (clickedObject.userData.objectData && clickedObject !== this.startPipe) {
         this.endPoint = clickedPoint.clone();
         this.endPipe = clickedObject;
-        
+
         // 距離を計測
         this.calculateDistance();
       } else {
@@ -237,7 +247,7 @@ class DistanceMeasurement {
     for (const line of this.closestLines) {
       if (line) line.visible = this.showClosest;
     }
-    
+
     // すべての指定線の表示/非表示を更新
     for (const line of this.measurementLines) {
       if (line) line.visible = this.showSpecified;
@@ -247,7 +257,7 @@ class DistanceMeasurement {
     for (const text of this.closestTexts) {
       if (text) text.visible = this.showClosest;
     }
-    
+
     // すべての指定テキストの表示/非表示を更新
     for (const text of this.measurementTexts) {
       if (text) text.visible = this.showSpecified;
@@ -282,11 +292,11 @@ class DistanceMeasurement {
     const direction = new THREE.Vector3().subVectors(endPos, startPos);
     const length = direction.length();
     const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
-    
+
     // 幅広い平面ジオメトリを作成（1枚の板）
     const width = 0.15;  // 線の幅
     const geometry = new THREE.PlaneGeometry(length, width);
-    
+
     const material = new THREE.MeshBasicMaterial({
       color: 0xff0000,  // 赤色
       transparent: true,
@@ -297,13 +307,13 @@ class DistanceMeasurement {
 
     this.previewLine = new THREE.Mesh(geometry, material);
     this.previewLine.position.copy(midPoint);
-    
+
     // 2点を結ぶ方向に回転
     this.previewLine.quaternion.setFromUnitVectors(
       new THREE.Vector3(1, 0, 0),
       direction.normalize()
     );
-    
+
     this.scene.add(this.previewLine);
   }
 
@@ -332,11 +342,11 @@ class DistanceMeasurement {
     const direction = new THREE.Vector3().subVectors(endPos, startPos);
     const length = direction.length();
     const midPoint = new THREE.Vector3().addVectors(startPos, endPos).multiplyScalar(0.5);
-    
+
     // 幅広い平面ジオメトリを作成（1枚の板）
     const width = 0.15;  // 線の幅
     const geometry = new THREE.PlaneGeometry(length, width);
-    
+
     // 単色のマテリアルを作成
     const colorValue = color === 'blue' ? 0x0000ff : 0xff0000;
     const material = new THREE.MeshBasicMaterial({
@@ -349,7 +359,7 @@ class DistanceMeasurement {
 
     const lineMesh = new THREE.Mesh(geometry, material);
     lineMesh.position.copy(midPoint);
-    
+
     // 線のタイプに応じて配列に追加し、表示状態を設定
     if (lineType === 'closest') {
       this.closestLines.push(lineMesh);
@@ -362,13 +372,13 @@ class DistanceMeasurement {
       this.lineMidPoints.push(midPoint.clone());
       lineMesh.visible = this.showSpecified;  // 表示状態を反映
     }
-    
+
     // 初期回転を設定
     const index = lineType === 'closest' ? this.closestLines.length - 1 : this.measurementLines.length - 1;
     this.updateSingleLineRotation(lineType, index);
-    
+
     this.scene.add(lineMesh);
-    
+
     // 線の上にテキストを描画
     this.drawDistanceTextAboveLine(midPoint, distance, color, lineType);
   }
@@ -404,6 +414,7 @@ class DistanceMeasurement {
     context.fillText(`${distance.toFixed(3)}m`, canvas.width / 2, canvas.height / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
     const spriteMaterial = new THREE.SpriteMaterial({
       map: texture,
       depthTest: false,
@@ -414,10 +425,10 @@ class DistanceMeasurement {
     // 線の中心に配置
     const textPosition = position.clone();
     textSprite.position.copy(textPosition);
-    
+
     // 初期スケール（カメラ距離に応じて動的に調整される）
     textSprite.scale.set(2, 0.5, 1);
-    
+
     // 線のタイプに応じて配列に追加し、表示状態を設定
     if (lineType === 'closest') {
       this.closestTexts.push(textSprite);
@@ -428,7 +439,7 @@ class DistanceMeasurement {
       this.measurementTextPositions.push(textPosition);
       textSprite.visible = this.showSpecified;
     }
-    
+
     this.scene.add(textSprite);
   }
 
@@ -479,11 +490,11 @@ class DistanceMeasurement {
     let measurementData = {
       pipeA: {
         id: startData.feature_id || '不明',
-        name:'管路A'
+        name: '管路A'
       },
       pipeB: {
         id: endData.feature_id || '不明',
-        name:'管路B'
+        name: '管路B'
       },
       specified: {
         pointA: specifiedPointA,
@@ -495,7 +506,7 @@ class DistanceMeasurement {
     // 近接点を計算（頂点、辺、面すべてを含めた最短距離）
     if (this.startPipe.geometry && this.endPipe.geometry) {
       const closestPoints = this.getClosestPointsBetweenMeshes(this.startPipe, this.endPipe);
-      
+
       if (closestPoints) {
         measurementData.closest = {
           pointA: closestPoints.pointA,
@@ -592,20 +603,20 @@ class DistanceMeasurement {
   getClosestPointsBetweenMeshes(meshA, meshB) {
     const geometryA = meshA.geometry;
     const geometryB = meshB.geometry;
-    
+
     if (!geometryA || !geometryB) return null;
-    
+
     const positionA = geometryA.attributes.position;
     const positionB = geometryB.attributes.position;
     const indexA = geometryA.index;
     const indexB = geometryB.index;
-    
+
     if (!positionA || !positionB) return null;
-    
+
     let minDistance = Infinity;
     let closestPointA = null;
     let closestPointB = null;
-    
+
     // 管路Aの全頂点をワールド座標で取得
     const verticesA = [];
     for (let i = 0; i < positionA.count; i++) {
@@ -617,7 +628,7 @@ class DistanceMeasurement {
       meshA.localToWorld(v);
       verticesA.push(v);
     }
-    
+
     // 管路Bの全頂点をワールド座標で取得
     const verticesB = [];
     for (let i = 0; i < positionB.count; i++) {
@@ -629,7 +640,7 @@ class DistanceMeasurement {
       meshB.localToWorld(v);
       verticesB.push(v);
     }
-    
+
     // 1. 管路Aの各頂点 vs 管路Bの各面
     if (indexB) {
       for (let i = 0; i < verticesA.length; i++) {
@@ -637,7 +648,7 @@ class DistanceMeasurement {
           const v0 = verticesB[indexB.getX(j)];
           const v1 = verticesB[indexB.getX(j + 1)];
           const v2 = verticesB[indexB.getX(j + 2)];
-          
+
           const result = this.getClosestPointToTriangle(verticesA[i], v0, v1, v2);
           if (result.distance < minDistance) {
             minDistance = result.distance;
@@ -647,7 +658,7 @@ class DistanceMeasurement {
         }
       }
     }
-    
+
     // 2. 管路Bの各頂点 vs 管路Aの各面
     if (indexA) {
       for (let i = 0; i < verticesB.length; i++) {
@@ -655,7 +666,7 @@ class DistanceMeasurement {
           const v0 = verticesA[indexA.getX(j)];
           const v1 = verticesA[indexA.getX(j + 1)];
           const v2 = verticesA[indexA.getX(j + 2)];
-          
+
           const result = this.getClosestPointToTriangle(verticesB[i], v0, v1, v2);
           if (result.distance < minDistance) {
             minDistance = result.distance;
@@ -665,7 +676,7 @@ class DistanceMeasurement {
         }
       }
     }
-    
+
     // 3. 管路Aの各辺 vs 管路Bの各辺
     if (indexA && indexB) {
       for (let i = 0; i < indexA.count; i += 3) {
@@ -674,7 +685,7 @@ class DistanceMeasurement {
           [indexA.getX(i + 1), indexA.getX(i + 2)],
           [indexA.getX(i + 2), indexA.getX(i)]
         ];
-        
+
         for (const [a0, a1] of edgesA) {
           for (let j = 0; j < indexB.count; j += 3) {
             const edgesB = [
@@ -682,7 +693,7 @@ class DistanceMeasurement {
               [indexB.getX(j + 1), indexB.getX(j + 2)],
               [indexB.getX(j + 2), indexB.getX(j)]
             ];
-            
+
             for (const [b0, b1] of edgesB) {
               const result = this.getClosestPointsBetweenLineSegments(
                 verticesA[a0], verticesA[a1],
@@ -699,7 +710,7 @@ class DistanceMeasurement {
         }
       }
     }
-    
+
     if (closestPointA && closestPointB) {
       return {
         pointA: closestPointA,
@@ -707,7 +718,7 @@ class DistanceMeasurement {
         distance: minDistance
       };
     }
-    
+
     return null;
   }
 
@@ -718,17 +729,17 @@ class DistanceMeasurement {
     const edge0 = new THREE.Vector3().subVectors(v1, v0);
     const edge1 = new THREE.Vector3().subVectors(v2, v0);
     const v0ToPoint = new THREE.Vector3().subVectors(point, v0);
-    
+
     const a = edge0.dot(edge0);
     const b = edge0.dot(edge1);
     const c = edge1.dot(edge1);
     const d = edge0.dot(v0ToPoint);
     const e = edge1.dot(v0ToPoint);
-    
+
     const det = a * c - b * b;
     let s = b * e - c * d;
     let t = b * d - a * e;
-    
+
     if (s + t <= det) {
       if (s < 0) {
         if (t < 0) {
@@ -767,13 +778,13 @@ class DistanceMeasurement {
         t = 1 - s;
       }
     }
-    
+
     const closestPoint = v0.clone()
       .add(edge0.clone().multiplyScalar(s))
       .add(edge1.clone().multiplyScalar(t));
-    
+
     const distance = point.distanceTo(closestPoint);
-    
+
     return { closestPoint, distance };
   }
 
@@ -799,7 +810,7 @@ class DistanceMeasurement {
     for (let i = 0; i < this.measurementLines.length; i++) {
       this.updateSingleLineRotation('specified', i);
     }
-    
+
     // すべての近接距離の線を更新
     for (let i = 0; i < this.closestLines.length; i++) {
       this.updateSingleLineRotation('closest', i);
@@ -815,7 +826,7 @@ class DistanceMeasurement {
     const line = lineType === 'closest' ? this.closestLines[index] : this.measurementLines[index];
     const lineDirection = lineType === 'closest' ? this.closestLineDirections[index] : this.lineDirections[index];
     const lineMidPoint = lineType === 'closest' ? this.closestLineMidPoints[index] : this.lineMidPoints[index];
-    
+
     if (!line || !lineDirection || !lineMidPoint) {
       return;
     }
@@ -830,7 +841,7 @@ class DistanceMeasurement {
 
     // カメラ方向と線方向の外積でY軸（法線）を計算
     const normal = new THREE.Vector3().crossVectors(lineDir, cameraToLine).normalize();
-    
+
     // もし外積がゼロベクトルに近い場合（線がカメラ方向と平行）、デフォルトの法線を使用
     if (normal.length() < 0.001) {
       normal.set(0, 1, 0);
@@ -863,7 +874,7 @@ class DistanceMeasurement {
     const baseScale = 2;
     const minScale = 0.5;
     const maxScale = 5;
-    
+
     // すべての指定距離のテキストスケール更新
     for (let i = 0; i < this.measurementTexts.length; i++) {
       const text = this.measurementTexts[i];

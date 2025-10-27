@@ -130,7 +130,7 @@ class SkyComponent {
       this.sky.visible = visible;
     }
     if (!visible) {
-      this.scene.background = new THREE.Color(0x808080); // グレー
+      this.scene.background = new THREE.Color('#d0d0d0'); // グレー
     } else {
       this.scene.background = null; // Skyが表示されるので透明のまま
     }
