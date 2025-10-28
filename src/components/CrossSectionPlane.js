@@ -20,8 +20,9 @@ class CrossSectionPlane {
   /**
    * 管路をクリックして断面を生成
    * @param {THREE.Object3D} pipeObject - クリックされた管路オブジェクト
+   * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標
    */
-  createCrossSection(pipeObject) {
+  createCrossSection(pipeObject, clickPoint) {
     // 既存の断面をクリア
     this.clear();
     
@@ -30,16 +31,18 @@ class CrossSectionPlane {
       return;
     }
     
-    console.log('断面生成を開始します - クリックした管路のみ');
+    console.log('断面生成を開始します - クリックした管路のみ', 'クリック位置:', clickPoint);
     
     // クリックした管路のみに東西方向の線を描画
-    this.drawClickedPipeCrossSection(pipeObject);
+    this.drawClickedPipeCrossSection(pipeObject, clickPoint);
   }
 
   /**
    * クリックした管路に東西方向の線を描画
+   * @param {THREE.Object3D} pipeObject - クリックされた管路オブジェクト
+   * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標
    */
-  drawClickedPipeCrossSection(pipeObject) {
+  drawClickedPipeCrossSection(pipeObject, clickPoint) {
     const objectData = pipeObject.userData.objectData;
     const geometry = objectData.geometry?.[0];
     
@@ -50,7 +53,7 @@ class CrossSectionPlane {
     // 管路の形状とサイズを取得
     const radius = (geometry.radius || 0.3) / 2; // 半径（メートル）
     
-    // 管路の実際の3D位置を使用
+    // 管路の実際の3D位置を使用（断面描画用）
     const center = pipeObject.position.clone();
     
     // 管路の中心線を取得
@@ -67,34 +70,35 @@ class CrossSectionPlane {
     // 管路の中心軸方向ベクトル
     const axisDirection = new THREE.Vector3().subVectors(end, start).normalize();
     
-    // Y座標（深さ）
-    const pipeDepth = center.y;
+    // Y座標（深さ）- クリック位置を使用
+    const clickDepth = clickPoint.y;
+    const pipeDepth = center.y; // 管路の中心深さ（参考用）
     
-    // 床（Y=0）からクリックした管路まで2mごとに線を描画
-    // 管路が地下にある場合（Y < 0）
-    if (pipeDepth < 0) {
-      // 0m（地表）から管路の深さまで2mごと（グリッド線）
-      for (let depth = 0; depth >= pipeDepth; depth -= 2) {
-        // 管路の深さを超えたらループを終了
-        if (depth < pipeDepth) {
+    // 床（Y=0）からクリックした位置まで2mごとに線を描画
+    // クリック位置が地下にある場合（Y < 0）
+    if (clickDepth < 0) {
+      // 0m（地表）からクリック位置の深さまで2mごと（グリッド線）
+      for (let depth = 0; depth >= clickDepth; depth -= 2) {
+        // クリック位置の深さを超えたらループを終了
+        if (depth < clickDepth) {
           break;
         }
         
         // 2m間隔のグリッド線（灰色）
-        this.drawEastWestLine(depth, center, 0x888888, false);
+        this.drawEastWestLine(depth, clickPoint, 0x888888, false);
       }
       
-      // 管路の正確な深さに赤い線を追加（強調表示）
-      this.drawEastWestLine(pipeDepth, center, 0xff0000, true);
+      // クリックした位置の正確な深さに赤い線を追加（強調表示）
+      this.drawEastWestLine(clickDepth, clickPoint, 0xff0000, true);
     } else {
-      // 管路が地上にある場合は、その位置に赤い線を1本描画
-      this.drawEastWestLine(pipeDepth, center, 0xff0000, true);
+      // クリック位置が地上にある場合は、その位置に赤い線を1本描画
+      this.drawEastWestLine(clickDepth, clickPoint, 0xff0000, true);
     }
     
-    // 管路の断面（円形）を描画
+    // 管路の断面（円形）を描画（管路の中心位置で）
     this.drawCrossSectionCircle(center, radius, axisDirection, pipeObject.material.color);
     
-    console.log(`クリックした管路に東西方向の線を描画しました（深さ: ${pipeDepth.toFixed(2)}m）`);
+    console.log(`クリックした位置に東西方向の線を描画しました（クリック深さ: ${clickDepth.toFixed(2)}m, 管路中心深さ: ${pipeDepth.toFixed(2)}m）`);
   }
 
   /**

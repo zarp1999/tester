@@ -655,11 +655,12 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
 
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
+      const clickPoint = intersects[0].point; // クリックした位置の3D座標
       if (clickedObject.userData.objectData) {
         // 断面モードの場合は断面を生成
         if (enableCrossSectionMode && crossSectionRef.current) {
-          crossSectionRef.current.createCrossSection(clickedObject);
-          console.log('断面を生成:', clickedObject.userData.objectData);
+          crossSectionRef.current.createCrossSection(clickedObject, clickPoint);
+          console.log('断面を生成:', clickedObject.userData.objectData, 'クリック位置:', clickPoint);
         } else {
           // 通常モードの場合は選択
           setSelectedObject(clickedObject.userData.objectData);
