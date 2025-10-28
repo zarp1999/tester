@@ -190,9 +190,12 @@ class CrossSectionPlane {
     this.depthLines.push(line);
     this.scene.add(line);
     
-    // 深さラベルを追加（管路の位置に合わせる）
-    const labelPosition = new THREE.Vector3(center.x, depth, center.z);
-    this.drawDepthLabel(depth, labelPosition, highlight ? color : 0xffffff);
+    // 深さラベルを追加（10mごと、または強調表示の場合）
+    const shouldShowLabel = highlight || (Math.abs(depth) % 10 === 0);
+    if (shouldShowLabel) {
+      const labelPosition = new THREE.Vector3(center.x, depth, center.z);
+      this.drawDepthLabel(depth, labelPosition, highlight ? color : 0xffffff);
+    }
   }
 
   /**
@@ -241,8 +244,10 @@ class CrossSectionPlane {
     this.depthLines.push(line);
     this.scene.add(line);
     
-    // 深さラベルを追加
-    this.drawDepthLabel(depth, startPoint);
+    // 深さラベルを追加（10mごとのみ）
+    if (Math.abs(depth) % 10 === 0) {
+      this.drawDepthLabel(depth, startPoint);
+    }
   }
 
   /**
