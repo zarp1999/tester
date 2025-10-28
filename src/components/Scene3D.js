@@ -505,7 +505,10 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     if (intersects.length > 0) {
       const clickedObject = intersects[0].object;
 
-      if (clickedObject.userData.objectData && clickedObject === selectedMeshRef.current) {
+      // すでに選択されているオブジェクトで、かつCtrlキーが押されている場合のみドラッグ開始
+      if (clickedObject.userData.objectData && 
+          clickedObject === selectedMeshRef.current && 
+          event.ctrlKey) {
         // 選択されたオブジェクトをドラッグ開始
         isDragging.current = true;
 
