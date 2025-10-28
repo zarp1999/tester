@@ -1314,9 +1314,16 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         keysPressed.current['1'] = false;
       }
 
-      // 7: 管路表示トグル
+      // 7: 管路表示トグル + 切り口表示トグル
       if (keysPressed.current['7']) {
-        setShowPipes((prev) => !prev);
+        setShowPipes((prev) => {
+          const newShowPipes = !prev;
+          // 管路と切り口の表示を逆にする
+          if (enableCrossSectionMode && crossSectionRef.current) {
+            crossSectionRef.current.toggleCrossSections(!newShowPipes);
+          }
+          return newShowPipes;
+        });
         keysPressed.current['7'] = false;
       }
 
