@@ -401,15 +401,21 @@ class CrossSectionPlane {
     // LineMaterialを使用（太い線が正しく描画される）
     const lineMaterial = new LineMaterial({
       color: color,
-      linewidth: highlight ? 0.01 : 0.003,  // ワールド単位での太さ
+      linewidth: highlight ? 5 : 2,  // ピクセル単位での太さ
       transparent: !highlight,
       opacity: highlight ? 1.0 : 0.6,
-      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
+      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+      worldUnits: false,  // ピクセル単位を使用
+      vertexColors: false,
+      dashed: false
     });
     
     const line = new Line2(lineGeometry, lineMaterial);
+    line.computeLineDistances();  // 重要: これを呼び出さないと線が表示されない
     this.depthLines.push(line);
     this.scene.add(line);
+    
+    console.log(`グリッド線を作成: 深さ=${depth}m, 色=${color.toString(16)}, 強調=${highlight}, 位置=[${startPoint.x.toFixed(1)}, ${startPoint.y.toFixed(1)}, ${startPoint.z.toFixed(1)}]`);
     
     // 深さラベルを追加（10mごと、または強調表示の場合、かつshowLabel=trueの場合）
     const shouldShowLabel = showLabel && (highlight || (Math.abs(depth) % 10 === 0));
@@ -499,13 +505,17 @@ class CrossSectionPlane {
     // 管路の色を使用（Line2のLineMaterial）
     const lineMaterial = new LineMaterial({
       color: color,
-      linewidth: 0.005,  // ワールド単位での太さ
+      linewidth: 3,  // ピクセル単位での太さ
       transparent: true,
       opacity: 0.8,
-      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
+      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+      worldUnits: false,  // ピクセル単位を使用
+      vertexColors: false,
+      dashed: false
     });
     
     const line = new Line2(lineGeometry, lineMaterial);
+    line.computeLineDistances();  // 重要: これを呼び出さないと線が表示されない
     lineGroup.add(line); // グループに線を追加
     
     // 縦線の中点にラベルを作成（グループ内の相対座標）
