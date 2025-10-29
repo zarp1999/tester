@@ -107,8 +107,8 @@ class CrossSectionPlane {
       // 1m間隔のグリッド線（灰色）
       this.drawEastWestLine(depth, linePosition, 0x888888, false);
       
-      // このグリッド線が管路を切っている位置に縦線を描画
-      this.drawVerticalLinesAtDepth(depth);
+      // このグリッド線が断面平面（Z=clickPoint.z）上の管路を切っている位置に縦線を描画
+      this.drawVerticalLinesAtDepth(depth, clickPoint.z);
     }
     
     // 管路の中心深さに赤い線を追加（強調表示、ラベルなし）
@@ -218,10 +218,11 @@ class CrossSectionPlane {
   }
 
   /**
-   * グリッド線が管路を切っている位置に縦線を描画
+   * グリッド線が断面平面上の管路を切っている位置に縦線を描画
    * @param {number} targetDepth - グリッド線の深さ（Y座標）
+   * @param {number} crossSectionZ - 断面平面のZ座標
    */
-  drawVerticalLinesAtDepth(targetDepth) {
+  drawVerticalLinesAtDepth(targetDepth, crossSectionZ) {
     if (!this.objectsRef || !this.objectsRef.current) {
       return;
     }
@@ -267,6 +268,15 @@ class CrossSectionPlane {
         } else {
           start = new THREE.Vector3(startVertex[1], startVertex[2] - radius, startVertex[0]);
           end = new THREE.Vector3(endVertex[1], endVertex[2] - radius, endVertex[0]);
+        }
+        
+        // 管路が断面平面（Z=crossSectionZ）と交差しているかチェック
+        const minZ = Math.min(start.z, end.z) - radius;
+        const maxZ = Math.max(start.z, end.z) + radius;
+        
+        // 断面平面と交差していない管路はスキップ
+        if (crossSectionZ < minZ || crossSectionZ > maxZ) {
+          return;
         }
         
         // 管路の上端と下端のY座標（startとendはすでに中心位置なので半径を加減）
