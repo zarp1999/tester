@@ -10,6 +10,11 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
  */
 class CrossSectionPlane {
   constructor(scene, camera, objectsRef) {
+    console.log('CrossSectionPlane constructor called');
+    console.log('Line2:', typeof Line2, Line2);
+    console.log('LineMaterial:', typeof LineMaterial, LineMaterial);
+    console.log('LineGeometry:', typeof LineGeometry, LineGeometry);
+    
     this.scene = scene;
     this.camera = camera;
     this.objectsRef = objectsRef;
@@ -392,6 +397,7 @@ class CrossSectionPlane {
     const endPoint = new THREE.Vector3(center.x + lineLength / 2, depth, center.z);
     
     // Line2用のLineGeometryを作成
+    console.log('drawEastWestLine: Creating LineGeometry, LineGeometry type:', typeof LineGeometry);
     const lineGeometry = new LineGeometry();
     lineGeometry.setPositions([
       startPoint.x, startPoint.y, startPoint.z,
@@ -399,6 +405,7 @@ class CrossSectionPlane {
     ]);
     
     // LineMaterialを使用（太い線が正しく描画される）
+    console.log('drawEastWestLine: Creating LineMaterial, LineMaterial type:', typeof LineMaterial);
     const lineMaterial = new LineMaterial({
       color: color,
       linewidth: highlight ? 5 : 2,  // ピクセル単位での太さ
@@ -410,6 +417,7 @@ class CrossSectionPlane {
       dashed: false
     });
     
+    console.log('drawEastWestLine: Creating Line2, Line2 type:', typeof Line2);
     const line = new Line2(lineGeometry, lineMaterial);
     line.computeLineDistances();  // 重要: これを呼び出さないと線が表示されない
     this.depthLines.push(line);
