@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 
 /**
  * 断面平面コンポーネント
@@ -388,16 +391,23 @@ class CrossSectionPlane {
     const startPoint = new THREE.Vector3(center.x - lineLength / 2, depth, center.z);
     const endPoint = new THREE.Vector3(center.x + lineLength / 2, depth, center.z);
     
-    const points = [startPoint, endPoint];
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-    const lineMaterial = new THREE.LineBasicMaterial({
+    // Line2用のLineGeometryを作成
+    const lineGeometry = new LineGeometry();
+    lineGeometry.setPositions([
+      startPoint.x, startPoint.y, startPoint.z,
+      endPoint.x, endPoint.y, endPoint.z
+    ]);
+    
+    // LineMaterialを使用（太い線が正しく描画される）
+    const lineMaterial = new LineMaterial({
       color: color,
-      linewidth: highlight ? 4 : 2,
+      linewidth: highlight ? 0.01 : 0.003,  // ワールド単位での太さ
       transparent: !highlight,
-      opacity: highlight ? 1.0 : 0.6
+      opacity: highlight ? 1.0 : 0.6,
+      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
     });
     
-    const line = new THREE.Line(lineGeometry, lineMaterial);
+    const line = new Line2(lineGeometry, lineMaterial);
     this.depthLines.push(line);
     this.scene.add(line);
     
@@ -479,18 +489,23 @@ class CrossSectionPlane {
     const startPoint = new THREE.Vector3(0, 0, 0); // グループの原点から
     const endPoint = new THREE.Vector3(0, pipeDepth, 0); // Y軸方向にpipeDepthまで
     
-    const points = [startPoint, endPoint];
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    // Line2用のLineGeometryを作成
+    const lineGeometry = new LineGeometry();
+    lineGeometry.setPositions([
+      startPoint.x, startPoint.y, startPoint.z,
+      endPoint.x, endPoint.y, endPoint.z
+    ]);
     
-    // 管路の色を使用
-    const lineMaterial = new THREE.LineBasicMaterial({
+    // 管路の色を使用（Line2のLineMaterial）
+    const lineMaterial = new LineMaterial({
       color: color,
-      linewidth: 3,
+      linewidth: 0.005,  // ワールド単位での太さ
       transparent: true,
-      opacity: 0.8
+      opacity: 0.8,
+      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
     });
     
-    const line = new THREE.Line(lineGeometry, lineMaterial);
+    const line = new Line2(lineGeometry, lineMaterial);
     lineGroup.add(line); // グループに線を追加
     
     // 縦線の中点にラベルを作成（グループ内の相対座標）
@@ -666,6 +681,29 @@ class CrossSectionPlane {
       // スケールを適用（最小0.5、最大10）
       const clampedScale = Math.max(0.5, Math.min(10, scale));
       sprite.scale.set(clampedScale, clampedScale / 4, 1);
+    });
+  }
+
+  /**
+   * ウィンドウリサイズ時に呼び出される
+   * Line2のLineMaterialのresolutionを更新
+   */
+  handleResize(width, height) {
+    const resolution = new THREE.Vector2(width, height);
+    
+    // すべてのdepthLinesのLineMaterialのresolutionを更新
+    this.depthLines.forEach(line => {
+      if (line.material && line.material.resolution) {
+        line.material.resolution.set(width, height);
+      }
+      // グループの場合は子要素をチェック
+      if (line.children) {
+        line.children.forEach(child => {
+          if (child.material && child.material.resolution) {
+            child.material.resolution.set(width, height);
+          }
+        });
+      }
     });
   }
 

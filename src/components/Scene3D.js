@@ -1192,13 +1192,21 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     // リサイズハンドラー
     const handleResize = () => {
       if (!mountRef.current) return;
-      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+      const width = mountRef.current.clientWidth;
+      const height = mountRef.current.clientHeight;
+      
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      renderer.setSize(width, height);
       
       // Composerが有効な場合のみリサイズ
       if (composerRef.current) {
-        composerRef.current.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+        composerRef.current.setSize(width, height);
+      }
+      
+      // CrossSectionPlaneのLine2マテリアルのresolutionを更新
+      if (crossSectionRef.current) {
+        crossSectionRef.current.handleResize(width, height);
       }
     };
     window.addEventListener('resize', handleResize);
