@@ -646,6 +646,30 @@ class CrossSectionPlane {
   }
 
   /**
+   * 深さラベルのスケールをカメラからの距離に応じて更新
+   */
+  update() {
+    if (!this.camera || this.depthLabels.length === 0) {
+      return;
+    }
+    
+    // 各深さラベルのスプライトのスケールを更新
+    this.depthLabels.forEach(sprite => {
+      // カメラからスプライトまでの距離を計算
+      const distance = this.camera.position.distanceTo(sprite.position);
+      
+      // 距離に応じてスケールを調整（基準距離: 50m、基準スケール: 4）
+      const baseDistance = 50;
+      const baseScale = 4;
+      const scale = (distance / baseDistance) * baseScale;
+      
+      // スケールを適用（最小0.5、最大10）
+      const clampedScale = Math.max(0.5, Math.min(10, scale));
+      sprite.scale.set(clampedScale, clampedScale / 4, 1);
+    });
+  }
+
+  /**
    * クリーンアップ
    */
   dispose() {

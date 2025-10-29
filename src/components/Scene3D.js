@@ -1453,6 +1453,11 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         distanceMeasurementRef.current.update();
       }
 
+      // 断面の深さラベルをカメラからの距離に応じて更新
+      if (crossSectionRef.current) {
+        crossSectionRef.current.update();
+      }
+
       // レンダリング（エラーハンドリング付き）
       try {
         if (composerRef.current) {
