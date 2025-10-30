@@ -19,7 +19,7 @@ import './Scene3D.css';
  * - キー/マウスによるカメラ操作
  * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
  */
-function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false }) {
+function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, onMeasurementUpdate = null }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -81,6 +81,27 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
 
   // 距離計測結果のstate
   const [measurementResult, setMeasurementResult] = useState(null);
+
+  // showPipes が変更されたときに管路オブジェクトの表示/非表示を切り替え
+  useEffect(() => {
+    if (!objectsRef.current) return;
+    
+    // 全ての管路オブジェクトのvisibleプロパティを更新
+    Object.values(objectsRef.current).forEach(obj => {
+      if (obj && obj.type === 'Mesh') {
+        obj.visible = showPipes;
+      }
+    });
+    
+    console.log(`管路の表示を${showPipes ? '表示' : '非表示'}に切り替えました`);
+  }, [showPipes]);
+
+  // 距離計測結果が更新されたときに親コンポーネントに通知
+  useEffect(() => {
+    if (onMeasurementUpdate) {
+      onMeasurementUpdate(measurementResult);
+    }
+  }, [measurementResult, onMeasurementUpdate]);
 
   // オブジェクトの元データを保存（復元機能用）
   const originalObjectsData = useRef({});
@@ -502,8 +523,11 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       false
     );
 
-    if (intersects.length > 0) {
-      const clickedObject = intersects[0].object;
+    // visible: true のオブジェクトのみをフィルタリング
+    const visibleIntersects = intersects.filter(intersect => intersect.object.visible);
+
+    if (visibleIntersects.length > 0) {
+      const clickedObject = visibleIntersects[0].object;
 
       // すでに選択されているオブジェクトで、かつCtrlキーが押されている場合のみドラッグ開始
       if (clickedObject.userData.objectData && 
@@ -653,9 +677,12 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       false
     );
 
-    if (intersects.length > 0) {
-      const clickedObject = intersects[0].object;
-      const clickPoint = intersects[0].point; // クリックした位置の3D座標
+    // visible: true のオブジェクトのみをフィルタリング
+    const visibleIntersects = intersects.filter(intersect => intersect.object.visible);
+
+    if (visibleIntersects.length > 0) {
+      const clickedObject = visibleIntersects[0].object;
+      const clickPoint = visibleIntersects[0].point; // クリックした位置の3D座標
       if (clickedObject.userData.objectData) {
         // 断面モードの場合は断面を生成
         if (enableCrossSectionMode && crossSectionRef.current) {
@@ -1158,19 +1185,6 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     composerRef.current = composer;
     outlinePassRef.current = outlinePass;
 
-    // 距離計測の初期化
-    const distanceMeasurement = new DistanceMeasurement(
-      scene,
-      camera,
-      renderer,
-      objectsRef,  // refオブジェクト自体を渡す
-      raycasterRef.current,
-      mouseRef.current
-    );
-    distanceMeasurement.setResultUpdateCallback(setMeasurementResult);
-    distanceMeasurement.enable(mountRef.current);
-    distanceMeasurementRef.current = distanceMeasurement;
-
     // 断面図の初期化（断面モードが有効な場合）
     if (enableCrossSectionMode) {
       const crossSection = new CrossSectionPlane(
@@ -1180,6 +1194,20 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       );
       crossSectionRef.current = crossSection;
     }
+
+    // 距離計測の初期化
+    const distanceMeasurement = new DistanceMeasurement(
+      scene,
+      camera,
+      renderer,
+      objectsRef,  // refオブジェクト自体を渡す
+      raycasterRef.current,
+      mouseRef.current,
+      crossSectionRef  // CSG断面用のrefを追加
+    );
+    distanceMeasurement.setResultUpdateCallback(setMeasurementResult);
+    distanceMeasurement.enable(mountRef.current);
+    distanceMeasurementRef.current = distanceMeasurement;
 
     // イベントリスナー
     mountRef.current.addEventListener('mousemove', handleMouseMove);
@@ -1415,6 +1443,9 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           false
         );
 
+        // visible: true のオブジェクトのみをフィルタリング
+        const visibleIntersects = intersects.filter(intersect => intersect.object.visible);
+
         // 前回ホバーしていたオブジェクトをクリア
         if (hoveredObjectRef.current) {
           document.body.style.cursor = 'default';
@@ -1422,8 +1453,8 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         }
 
         // 新しくホバーしたオブジェクトを設定（選択中は除外）
-        if (intersects.length > 0) {
-          const hoveredObject = intersects[0].object;
+        if (visibleIntersects.length > 0) {
+          const hoveredObject = visibleIntersects[0].object;
           if (hoveredObject !== selectedMeshRef.current) {
             document.body.style.cursor = 'pointer';
             hoveredObjectRef.current = hoveredObject;

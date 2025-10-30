@@ -4,18 +4,19 @@ import './DistanceMeasurement.css';
 
 /**
  * 距離計測コンポーネント
- * - 左Shift + 左ドラッグで管路間の距離を計測
+ * - 左Shift + 左ドラッグで管路またはCSG断面間の距離を計測
  * - 近接点と指定点の両方を表示
  * - Escキーでクリア
  */
 class DistanceMeasurement {
-  constructor(scene, camera, renderer, objectsRef, raycasterRef, mouseRef) {
+  constructor(scene, camera, renderer, objectsRef, raycasterRef, mouseRef, crossSectionRef = null) {
     this.scene = scene;
     this.camera = camera;
     this.renderer = renderer;
     this.objectsRef = objectsRef;
     this.raycasterRef = raycasterRef;
     this.mouseRef = mouseRef;
+    this.crossSectionRef = crossSectionRef;  // CSG断面用のref
 
     // 計測状態
     this.isMeasuring = false;
@@ -92,6 +93,29 @@ class DistanceMeasurement {
       }
     }
   }
+
+  /**
+   * 管路とCSG断面のオブジェクト配列を取得（visible: trueのみ）
+   * @returns {Array} 計測対象のオブジェクト配列
+   */
+  getMeasurableObjects() {
+    const objects = [];
+    
+    // 管路オブジェクトを追加（visible: trueのみ）
+    if (this.objectsRef && this.objectsRef.current) {
+      const visiblePipes = Object.values(this.objectsRef.current).filter(obj => obj.visible);
+      objects.push(...visiblePipes);
+    }
+    
+    // CSG断面オブジェクトを追加（visible: trueのみ）
+    if (this.crossSectionRef && this.crossSectionRef.current && this.crossSectionRef.current.crossSections) {
+      const visibleCrossSections = this.crossSectionRef.current.crossSections.filter(obj => obj.visible);
+      objects.push(...visibleCrossSections);
+    }
+    
+    return objects;
+  }
+
   /**
    * マウスダウンハンドラー
    */
@@ -104,10 +128,10 @@ class DistanceMeasurement {
     event.preventDefault();
     event.stopPropagation();
 
-    // Raycasterで管路または地面を検出
+    // Raycasterで管路またはCSG断面を検出
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
     const intersects = this.raycasterRef.intersectObjects(
-      Object.values(this.objectsRef.current),
+      this.getMeasurableObjects(),  // 管路 + CSG断面
       false
     );
 
@@ -115,7 +139,8 @@ class DistanceMeasurement {
       const clickedObject = intersects[0].object;
       const clickedPoint = intersects[0].point; // 実際の交点
 
-      if (clickedObject.userData.objectData) {
+      // 管路またはCSG断面の場合に計測を開始
+      if (clickedObject.userData.objectData || clickedObject.type === 'Mesh') {
         this.isMeasuring = true;
         this.startPipe = clickedObject;
         this.startPoint = clickedPoint.clone(); // 実際のクリック位置を保存
@@ -134,9 +159,9 @@ class DistanceMeasurement {
     // 現在のマウス位置で交点を計算
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
 
-    // まず管路との交点を試みる
+    // まず管路またはCSG断面との交点を試みる
     const pipeIntersects = this.raycasterRef.intersectObjects(
-      Object.values(this.objectsRef.current),
+      this.getMeasurableObjects(),  // 管路 + CSG断面
       false
     );
 
@@ -190,27 +215,27 @@ class DistanceMeasurement {
     // 現在のマウス位置で交点を計算
     this.raycasterRef.setFromCamera(this.mouseRef, this.camera);
 
-    // 管路との交点のみを検出
+    // 管路またはCSG断面との交点を検出
     const pipeIntersects = this.raycasterRef.intersectObjects(
-      Object.values(this.objectsRef.current),
+      this.getMeasurableObjects(),  // 管路 + CSG断面
       false
     );
 
-    // 管路Bが存在し、管路Aと異なる場合のみ計測を実行
+    // 管路BまたはCSG断面が存在し、始点と異なる場合のみ計測を実行
     if (pipeIntersects.length > 0) {
       const clickedObject = pipeIntersects[0].object;
       const clickedPoint = pipeIntersects[0].point;
 
-      // 終点も管路オブジェクトで、始点とは異なる管路である必要がある
-      if (clickedObject.userData.objectData && clickedObject !== this.startPipe) {
+      // 終点も管路またはCSG断面で、始点とは異なるオブジェクトである必要がある
+      if ((clickedObject.userData.objectData || clickedObject.type === 'Mesh') && clickedObject !== this.startPipe) {
         this.endPoint = clickedPoint.clone();
         this.endPipe = clickedObject;
 
         // 距離を計測
         this.calculateDistance();
       } else {
-        // 同じ管路をクリックした場合は何もしない
-        console.log('同じ管路が選択されました。異なる管路を選択してください。');
+        // 同じオブジェクトをクリックした場合は何もしない
+        console.log('同じオブジェクトが選択されました。異なるオブジェクトを選択してください。');
       }
     } else {
       // 管路以外をクリックした場合
@@ -462,24 +487,18 @@ class DistanceMeasurement {
   }
 
   /**
-   * 管路間の距離を計算
+   * オブジェクト間の距離を計算（管路またはCSG断面）
    */
   calculateDistance() {
-    // 両方の管路が存在することを確認
+    // 両方のオブジェクトが存在することを確認
     if (!this.startPoint || !this.endPoint || !this.startPipe || !this.endPipe) {
-      console.error('管路AとBの両方が必要です');
+      console.error('オブジェクトAとBの両方が必要です');
       return;
     }
 
-    // 両方が管路オブジェクトであることを確認
-    if (!this.startPipe.userData.objectData || !this.endPipe.userData.objectData) {
-      console.error('選択されたオブジェクトが管路ではありません');
-      return;
-    }
-
-    // 管路データを取得（すでに存在確認済み）
-    const startData = this.startPipe.userData.objectData;
-    const endData = this.endPipe.userData.objectData;
+    // オブジェクトデータを取得（管路の場合はuserData.objectData、CSG断面の場合はnull）
+    const startData = this.startPipe.userData?.objectData;
+    const endData = this.endPipe.userData?.objectData;
 
     // 指定点間の距離（実際のクリック位置）
     const specifiedPointA = this.startPoint.clone();
@@ -489,12 +508,12 @@ class DistanceMeasurement {
     // 計測結果のベース
     let measurementData = {
       pipeA: {
-        id: startData.feature_id || '不明',
-        name: '管路A'
+        id: startData?.feature_id || 'CSG断面',
+        name: startData ? '管路A' : 'CSG断面A'
       },
       pipeB: {
-        id: endData.feature_id || '不明',
-        name: '管路B'
+        id: endData?.feature_id || 'CSG断面',
+        name: endData ? '管路B' : 'CSG断面B'
       },
       specified: {
         pointA: specifiedPointA,

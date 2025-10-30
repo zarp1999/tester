@@ -471,7 +471,7 @@ class CrossSectionPlane {
     context.font = 'Bold 120px Arial';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText(`${Math.abs(depth).toFixed(2)}m`, canvas.width / 2, canvas.height / 2);
+    context.fillText(`${Math.abs(depth).toFixed(3)}m`, canvas.width / 2, canvas.height / 2);
     
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;

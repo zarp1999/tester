@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Scene3D from '../Scene3D';
+import { DistanceMeasurementDisplay } from '../DistanceMeasurement';
 import './CrossSectionView.css';
 
 /**
@@ -9,6 +10,13 @@ import './CrossSectionView.css';
  * - 将来的に断面図生成専用の機能を追加予定
  */
 function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes }) {
+  // 距離計測結果のstate
+  const [measurementResult, setMeasurementResult] = useState(null);
+
+  // Scene3Dから距離計測結果を受け取るコールバック
+  const handleMeasurementUpdate = (result) => {
+    setMeasurementResult(result);
+  };
 
   return (
     <div className="cross-section-view">
@@ -26,6 +34,10 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
           1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br />
           Space: 透視投影・正射投影 マウスホイール:拡大縮小 +左Ctrlキー:低達<br />
           ◆離隔計測結果
+          {/* 距離計測結果を表示 */}
+          {measurementResult && (
+            <DistanceMeasurementDisplay measurementResult={measurementResult} />
+          )}
         </div>
       </div>
 
@@ -39,6 +51,7 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
         hideInfoPanel={true}
         hideBackground={true}
         enableCrossSectionMode={true}
+        onMeasurementUpdate={handleMeasurementUpdate}
       />
     </div>
   );
