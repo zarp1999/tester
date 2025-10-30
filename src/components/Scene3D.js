@@ -146,15 +146,15 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = (startDepth > 0 ? -startDepth : startDepth) - radius;
-          const endCenterY = (endDepth > 0 ? -endDepth : endDepth) - radius;
+          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
+          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
           startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
           endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
           // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
           // 頂点座標も天端を表すと仮定し、半径を引いて中心位置を計算
-          startPoint = new THREE.Vector3(start[1], start[2] - radius, start[0]);
-          endPoint = new THREE.Vector3(end[1], end[2] - radius, end[0]);
+          startPoint = new THREE.Vector3(start[1], start[2] + radius, start[0]);
+          endPoint = new THREE.Vector3(end[1], end[2] + radius, end[0]);
         }
 
         // 円柱の高さと方向を計算
@@ -264,13 +264,13 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         if (hasDepthAttrs) {
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = startDepth > 0 ? -(startDepth - radius): startDepth;
-          const endCenterY = endDepth > 0 ? -(endDepth - radius): endDepth;
+          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
+          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
           startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
           endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
-          startPoint = new THREE.Vector3(start[1], start[2] - radius, start[0]);
-          endPoint = new THREE.Vector3(end[1], end[2] - radius, end[0]);
+          startPoint = new THREE.Vector3(start[1], start[2] + radius, start[0]);
+          endPoint = new THREE.Vector3(end[1], end[2] + radius, end[0]);
         }
         // 円柱を正しい方向に回転
         const direction = endPoint.clone().sub(startPoint).normalize();

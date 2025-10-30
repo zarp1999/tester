@@ -91,8 +91,8 @@ class CrossSectionPlane {
       // 管路の中心位置を計算するために、天端の深さから半径を引く
       const startDepth = Number(objectData.attributes.start_point_depth / 100);
       const endDepth = Number(objectData.attributes.end_point_depth / 100);
-      const startCenterY = startDepth > 0 ? -(startDepth + radius): startDepth;
-      const endCenterY = endDepth > 0 ? -(endDepth + radius): endDepth;
+      const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
+      const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
       start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
       end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
     } else {
@@ -115,8 +115,8 @@ class CrossSectionPlane {
       intersectionPoint.z = clickPoint.z;
     }
     
-    // Y座標（深さ）- 管路の最も高い位置（浅い位置）を使用
-    const pipeDepth = Math.max(start.y, end.y);
+    // Y座標（深さ）- 断面平面との交点の深さを使用
+    const pipeDepth = intersectionPoint.y;
     const maxDepth = -50; // 最大深さ（50m）
     
     // 交点のX,Z座標を使用するためのVector3を作成（管路の中心線上の位置）
@@ -196,8 +196,8 @@ class CrossSectionPlane {
           // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(objectData.attributes.start_point_depth / 100);
           const endDepth = Number(objectData.attributes.end_point_depth / 100);
-          const startCenterY = startDepth > 0 ? -(startDepth + radius): startDepth;
-          const endCenterY = endDepth > 0 ? -(endDepth + radius): endDepth;
+          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
+          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
           start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
           end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
         } else {
@@ -208,9 +208,6 @@ class CrossSectionPlane {
         // 管路の前後端のZ座標（半径を考慮）
         const minZ = Math.min(start.z, end.z) - radius;
         const maxZ = Math.max(start.z, end.z) + radius;
-        
-        // 管路の最も高い位置（浅い位置）の中心深さを取得
-        const highestPipeDepth = Math.max(start.y, end.y);
         
         // 断面平面が管路を切っているかチェック
         if (crossSectionZ >= minZ && crossSectionZ <= maxZ) {
@@ -226,9 +223,9 @@ class CrossSectionPlane {
             if (t >= 0 && t <= 1) {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
               
-              // 交差点の位置に縦線とラベルを描画（管路の最も高い位置まで）
+              // 交差点の位置に縦線とラベルを描画（交点の深さまで）
               const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
-              this.drawVerticalLine(pipePosition, highestPipeDepth, obj.material.color, radius);
+              this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
               
               // この位置で管路の切り口（円形）も描画（CSGを使用）
               const axisDirection = direction.clone().normalize();
@@ -286,8 +283,8 @@ class CrossSectionPlane {
           // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(objectData.attributes.start_point_depth / 100);
           const endDepth = Number(objectData.attributes.end_point_depth / 100);
-          const startCenterY = startDepth > 0 ? -(startDepth + radius): startDepth;
-          const endCenterY = endDepth > 0 ? -(endDepth + radius): endDepth;
+          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
+          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
           start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
           end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
         } else {
@@ -308,9 +305,6 @@ class CrossSectionPlane {
         const minY = Math.min(start.y, end.y) - radius;
         const maxY = Math.max(start.y, end.y) + radius;
         
-        // 管路の最も高い位置（浅い位置）の中心深さを取得
-        const highestPipeDepth = Math.max(start.y, end.y);
-        
         // グリッド線が管路を切っているかチェック
         if (targetDepth >= minY && targetDepth <= maxY) {
           // 管路の中心軸とグリッド線（Y=targetDepth）の交点を計算
@@ -325,9 +319,14 @@ class CrossSectionPlane {
             if (t >= 0 && t <= 1) {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
               
-              // 交差点の位置に縦線とラベルを描画（管路の最も高い位置まで）
+              // 交点が断面平面の近くにあるかチェック（許容誤差: 半径分）
+              if (Math.abs(intersectionPoint.z - crossSectionZ) > radius) {
+                return;  // 断面平面から離れすぎている場合はスキップ
+              }
+              
+              // 交差点の位置に縦線とラベルを描画（交点の深さまで）
               const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
-              this.drawVerticalLine(pipePosition, highestPipeDepth, obj.material.color, radius);
+              this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
               
               // この位置で管路の切り口（円形）も描画（CSGを使用）
               const axisDirection = direction.clone().normalize();
