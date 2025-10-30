@@ -48,7 +48,7 @@ class CrossSectionPlane {
 
   /**
    * クリックした管路に東西方向の線を描画
-   * 線の位置は断面平面と管路中心線の交点を通り、深さは交点の深さを使用
+   * 線の位置は断面平面と管路中心線の交点を通り、縦線は管路の最も高い位置（浅い位置）まで描画
    * @param {THREE.Object3D} pipeObject - クリックされた管路オブジェクト
    * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標（Z座標から断面平面を定義）
    */
@@ -113,8 +113,8 @@ class CrossSectionPlane {
       intersectionPoint.z = clickPoint.z;
     }
     
-    // Y座標（深さ）- 交点の深さを使用
-    const pipeDepth = intersectionPoint.y;
+    // Y座標（深さ）- 管路の最も高い位置（浅い位置）を使用
+    const pipeDepth = Math.max(start.y, end.y);
     const maxDepth = -50; // 最大深さ（50m）
     
     // 交点のX,Z座標を使用するためのVector3を作成（管路の中心線上の位置）
@@ -130,7 +130,7 @@ class CrossSectionPlane {
     }
     
     // クリックした管路に縦線を描画（管路の色で）+ ラベルもグループ化
-    // 断面平面と管路中心線の交点の位置に描画
+    // 管路の最も高い位置（浅い位置）まで描画
     this.drawVerticalLine(linePosition, pipeDepth, pipeObject.material.color, radius);
     
     // 断面平面（クリック位置のZ座標）と管路が交差する位置に縦線を描画
@@ -140,7 +140,7 @@ class CrossSectionPlane {
     // 管路の断面を描画（CSGを使用して垂直面で切断）
     this.drawCrossSectionCircle(center, radius, axisDirection, pipeObject.material.color, pipeObject, clickPoint.z);
     
-    console.log(`断面を生成しました（断面平面: Z=${clickPoint.z.toFixed(2)}, 管路中心線との交点: X=${intersectionPoint.x.toFixed(2)}, Y=${pipeDepth.toFixed(2)}m）`);
+    console.log(`断面を生成しました（断面平面: Z=${clickPoint.z.toFixed(2)}, 縦線位置: X=${intersectionPoint.x.toFixed(2)}, 管路最高位置: Y=${pipeDepth.toFixed(2)}m）`);
   }
 
   /**
@@ -205,6 +205,9 @@ class CrossSectionPlane {
         const minZ = Math.min(start.z, end.z) - radius;
         const maxZ = Math.max(start.z, end.z) + radius;
         
+        // 管路の最も高い位置（浅い位置）の中心深さを取得
+        const highestPipeDepth = Math.max(start.y, end.y);
+        
         // 断面平面が管路を切っているかチェック
         if (crossSectionZ >= minZ && crossSectionZ <= maxZ) {
           // 管路の中心軸と断面平面（Z=crossSectionZ）の交点を計算
@@ -219,9 +222,9 @@ class CrossSectionPlane {
             if (t >= 0 && t <= 1) {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
               
-              // 交差点の位置に縦線とラベルを描画
+              // 交差点の位置に縦線とラベルを描画（管路の最も高い位置まで）
               const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
-              this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
+              this.drawVerticalLine(pipePosition, highestPipeDepth, obj.material.color, radius);
               
               // この位置で管路の切り口（円形）も描画（CSGを使用）
               const axisDirection = direction.clone().normalize();
@@ -299,6 +302,9 @@ class CrossSectionPlane {
         const minY = Math.min(start.y, end.y) - radius;
         const maxY = Math.max(start.y, end.y) + radius;
         
+        // 管路の最も高い位置（浅い位置）の中心深さを取得
+        const highestPipeDepth = Math.max(start.y, end.y);
+        
         // グリッド線が管路を切っているかチェック
         if (targetDepth >= minY && targetDepth <= maxY) {
           // 管路の中心軸とグリッド線（Y=targetDepth）の交点を計算
@@ -313,9 +319,9 @@ class CrossSectionPlane {
             if (t >= 0 && t <= 1) {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
               
-              // 交差点の位置に縦線とラベルを描画
+              // 交差点の位置に縦線とラベルを描画（管路の最も高い位置まで）
               const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
-              this.drawVerticalLine(pipePosition, targetDepth, obj.material.color, radius);
+              this.drawVerticalLine(pipePosition, highestPipeDepth, obj.material.color, radius);
               
               // この位置で管路の切り口（円形）も描画（CSGを使用）
               const axisDirection = direction.clone().normalize();
