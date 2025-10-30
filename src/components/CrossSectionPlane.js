@@ -84,13 +84,15 @@ class CrossSectionPlane {
       Number.isFinite(Number(objectData.attributes.end_point_depth))
     );
     
-    // 座標変換（他の管路と同じロジック）
+    // 座標変換（Scene3D.jsと同じロジック）
     let start, end;
     if (hasDepthAttrs) {
+      // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
+      // 管路の中心位置を計算するために、天端の深さから半径を引く
       const startDepth = Number(objectData.attributes.start_point_depth / 100);
       const endDepth = Number(objectData.attributes.end_point_depth / 100);
-      const startCenterY = startDepth > 0 ? -(startDepth - radius): startDepth;
-      const endCenterY = endDepth > 0 ? -(endDepth - radius): endDepth;
+      const startCenterY = startDepth > 0 ? -(startDepth + radius): startDepth;
+      const endCenterY = endDepth > 0 ? -(endDepth + radius): endDepth;
       start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
       end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
     } else {
@@ -190,10 +192,12 @@ class CrossSectionPlane {
         
         let start, end;
         if (hasDepthAttrs) {
+          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
+          // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(objectData.attributes.start_point_depth / 100);
           const endDepth = Number(objectData.attributes.end_point_depth / 100);
-          const startCenterY = startDepth > 0 ? -(startDepth - radius): startDepth;
-          const endCenterY = endDepth > 0 ? -(endDepth - radius): endDepth;
+          const startCenterY = startDepth > 0 ? -(startDepth + radius): startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth + radius): endDepth;
           start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
           end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
         } else {
@@ -278,10 +282,12 @@ class CrossSectionPlane {
         
         let start, end;
         if (hasDepthAttrs) {
+          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
+          // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(objectData.attributes.start_point_depth / 100);
           const endDepth = Number(objectData.attributes.end_point_depth / 100);
-          const startCenterY = startDepth > 0 ? -(startDepth - radius): startDepth;
-          const endCenterY = endDepth > 0 ? -(endDepth - radius): endDepth;
+          const startCenterY = startDepth > 0 ? -(startDepth + radius): startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth + radius): endDepth;
           start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
           end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
         } else {
