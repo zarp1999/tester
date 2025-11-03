@@ -24,6 +24,9 @@ class CrossSectionPlane {
     
     // 切り口の表示状態（デフォルトは非表示）
     this.showCrossSections = false;
+    
+    // 断面描画情報を一時的に保存する配列
+    this.pendingCrossSections = []; // {center, radius, axisDirection, color, pipeObject, crossSectionZ}
   }
 
   /**
@@ -32,17 +35,16 @@ class CrossSectionPlane {
    * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標
    */
   createCrossSection(pipeObject, clickPoint) {
-    // 既存の断面をクリア
+    // 生成前に既存の表示を全クリア
     this.clear();
     
+    this.pendingCrossSections = [];
+    
     if (!pipeObject || !pipeObject.userData || !pipeObject.userData.objectData) {
-      console.warn('無効な管路オブジェクト');
       return;
     }
     
-    console.log('断面生成を開始します - クリックした管路のみ', 'クリック位置:', clickPoint);
-    
-    // クリックした管路のみに東西方向の線を描画
+    // クリックした管路を基準に断面生成フローを開始
     this.drawClickedPipeCrossSection(pipeObject, clickPoint);
   }
 
@@ -53,6 +55,7 @@ class CrossSectionPlane {
    * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標（Z座標から断面平面を定義）
    */
   drawClickedPipeCrossSection(pipeObject, clickPoint) {
+    // クリック対象の管路情報を取得
     const objectData = pipeObject.userData.objectData;
     const geometry = objectData.geometry?.[0];
     
@@ -60,89 +63,44 @@ class CrossSectionPlane {
       return;
     }
     
-    // 管路の形状とサイズを取得
-    let radius = (objectData.attributes?.radius != null) ? Number(objectData.attributes.radius) : 0.3;
-    if (radius > 5) radius = radius / 1000;
-    radius = Math.max(radius, 0.05);
-    
-    // 管路の実際の3D位置を使用（断面描画用）
-    const center = pipeObject.position.clone();
-    
-    // 管路の中心線を取得
+    const radius = this.getPipeRadius(objectData);
     const vertices = geometry.vertices;
+    const { start, end } = this.getPipeStartEnd(vertices[0], vertices[vertices.length - 1], objectData, radius);
     
-    // 管路の中心軸方向ベクトルを計算
-    const startVertex = vertices[0];
-    const endVertex = vertices[vertices.length - 1];
-    
-    // 深さ属性の有無をチェック（Scene3D.jsと同じロジック）
-    const hasDepthAttrs = (
-      objectData.attributes &&
-      objectData.attributes.start_point_depth != null &&
-      objectData.attributes.end_point_depth != null &&
-      Number.isFinite(Number(objectData.attributes.start_point_depth)) &&
-      Number.isFinite(Number(objectData.attributes.end_point_depth))
-    );
-    
-    // 座標変換（Scene3D.jsと同じロジック）
-    let start, end;
-    if (hasDepthAttrs) {
-      // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
-      // 管路の中心位置を計算するために、天端の深さから半径を引く
-      const startDepth = Number(objectData.attributes.start_point_depth / 100);
-      const endDepth = Number(objectData.attributes.end_point_depth / 100);
-      const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
-      const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
-      start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
-      end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
-    } else {
-      start = new THREE.Vector3(startVertex[1], startVertex[2] - radius, startVertex[0]);
-      end = new THREE.Vector3(endVertex[1], endVertex[2] - radius, endVertex[0]);
-    }
-    
-    // 管路の中心軸方向ベクトル
-    const axisDirection = new THREE.Vector3().subVectors(end, start).normalize();
     const direction = new THREE.Vector3().subVectors(end, start);
+    const axisDirection = direction.clone().normalize(); // 管路の軸方向
     
-    // 断面平面（Z=clickPoint.z）と管路中心線の交点を計算
+    // 断面平面(Z=clickPoint.z)と管路中心線の交点を求める
     let intersectionPoint;
     if (Math.abs(direction.z) > 0.001) {
       const t = (clickPoint.z - start.z) / direction.z;
       intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
     } else {
-      // 管路がZ軸に垂直な場合は、始点を使用
       intersectionPoint = start.clone();
       intersectionPoint.z = clickPoint.z;
     }
     
-    // Y座標（深さ）- 断面平面との交点の深さを使用
-    const pipeDepth = intersectionPoint.y;
-    const maxDepth = -50; // 最大深さ（50m）
-    
-    // 交点のX,Z座標を使用するためのVector3を作成（管路の中心線上の位置）
+    const maxDepth = -50; // グリッド描画の下限(m)
     const linePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
     
-    // 床（Y=0）から-50mまで1mごとに線を描画
     for (let depth = 0; depth >= maxDepth; depth -= 1) {
-      // 1m間隔のグリッド線（灰色）
       this.drawEastWestLine(depth, linePosition, 0x888888, false);
-      
-      // このグリッド線が断面平面（Z=clickPoint.z）上の管路を切っている位置に縦線を描画
-      this.drawVerticalLinesAtDepth(depth, clickPoint.z);
     }
     
-    // クリックした管路に縦線を描画（管路の色で）+ ラベルもグループ化
-    // 管路の最も高い位置（浅い位置）まで描画
-    this.drawVerticalLine(linePosition, pipeDepth, pipeObject.material.color, radius);
+    // 断面平面Z上で交差するすべての管路に縦線を描画
+    this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, null);
     
-    // 断面平面（クリック位置のZ座標）と管路が交差する位置に縦線を描画
-    // （クリックした管路は既に描画済みなのでスキップ）
-    this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, pipeObject);
+    // 後段の一括描画用に断面情報を登録
+    this.pendingCrossSections.push({
+      center: intersectionPoint,
+      radius: radius,
+      axisDirection: axisDirection,
+      color: pipeObject.material.color,
+      pipeObject: pipeObject,
+      crossSectionZ: clickPoint.z
+    });
     
-    // 管路の断面を描画（CSGを使用して垂直面で切断）
-    this.drawCrossSectionCircle(center, radius, axisDirection, pipeObject.material.color, pipeObject, clickPoint.z);
-    
-    console.log(`断面を生成しました（断面平面: Z=${clickPoint.z.toFixed(2)}, 縦線位置: X=${intersectionPoint.x.toFixed(2)}, 管路最高位置: Y=${pipeDepth.toFixed(2)}m）`);
+    this.drawAllPendingCrossSections();
   }
 
   /**
@@ -151,6 +109,7 @@ class CrossSectionPlane {
    * @param {THREE.Object3D} excludePipeObject - スキップする管路（クリックした管路）
    */
   drawVerticalLinesAtCrossSectionPlane(crossSectionZ, excludePipeObject = null) {
+    // 断面平面Zで各管路の中心線と交差する位置を探し、縦線を描画
     if (!this.objectsRef || !this.objectsRef.current) {
       return;
     }
@@ -158,7 +117,6 @@ class CrossSectionPlane {
     const allObjects = Object.values(this.objectsRef.current);
     
     allObjects.forEach(obj => {
-      // クリックした管路はスキップ（既に描画済み）
       if (excludePipeObject && obj === excludePipeObject) {
         return;
       }
@@ -171,166 +129,34 @@ class CrossSectionPlane {
           return;
         }
         
-        // 管路の半径を取得（Scene3D.jsと同じロジック）
-        let radius = (objectData.attributes?.radius != null) ? Number(objectData.attributes.radius) : 0.3;
-        if (radius > 5) radius = radius / 1000;
-        radius = Math.max(radius, 0.05);
-        
-        // 管路の始点と終点を取得
+        const radius = this.getPipeRadius(objectData);
         const vertices = geometry.vertices;
-        const startVertex = vertices[0];
-        const endVertex = vertices[vertices.length - 1];
+        const { start, end } = this.getPipeStartEnd(vertices[0], vertices[vertices.length - 1], objectData, radius);
         
-        // 深さ属性の有無をチェック（Scene3D.jsと同じロジック）
-        const hasDepthAttrs = (
-          objectData.attributes &&
-          objectData.attributes.start_point_depth != null &&
-          objectData.attributes.end_point_depth != null &&
-          Number.isFinite(Number(objectData.attributes.start_point_depth)) &&
-          Number.isFinite(Number(objectData.attributes.end_point_depth))
-        );
-        
-        let start, end;
-        if (hasDepthAttrs) {
-          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
-          // 管路の中心位置を計算するために、天端の深さから半径を引く
-          const startDepth = Number(objectData.attributes.start_point_depth / 100);
-          const endDepth = Number(objectData.attributes.end_point_depth / 100);
-          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
-          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
-          start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
-          end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
-        } else {
-          start = new THREE.Vector3(startVertex[1], startVertex[2] - radius, startVertex[0]);
-          end = new THREE.Vector3(endVertex[1], endVertex[2] - radius, endVertex[0]);
-        }
-        
-        // 管路の前後端のZ座標（半径を考慮）
         const minZ = Math.min(start.z, end.z) - radius;
         const maxZ = Math.max(start.z, end.z) + radius;
         
-        // 断面平面が管路を切っているかチェック
         if (crossSectionZ >= minZ && crossSectionZ <= maxZ) {
-          // 管路の中心軸と断面平面（Z=crossSectionZ）の交点を計算
           const direction = new THREE.Vector3().subVectors(end, start);
           
-          // パラメトリック方程式: P = start + t * direction
-          // Z座標がcrossSectionZになるtを求める
           if (Math.abs(direction.z) > 0.001) {
             const t = (crossSectionZ - start.z) / direction.z;
             
-            // t が 0〜1 の範囲にあれば、管路の中心軸上
             if (t >= 0 && t <= 1) {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
-              
-              // 交差点の位置に縦線とラベルを描画（交点の深さまで）
               const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
+              
+              // 床(Y=0)から管路上端までの縦線を描画
               this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
               
-              // この位置で管路の切り口（円形）も描画（CSGを使用）
-              const axisDirection = direction.clone().normalize();
-              this.drawCrossSectionCircle(intersectionPoint, radius, axisDirection, obj.material.color, obj, crossSectionZ);
-            }
-          }
-        }
-      }
-    });
-  }
-
-  /**
-   * グリッド線が断面平面上の管路を切っている位置に縦線を描画
-   * @param {number} targetDepth - グリッド線の深さ（Y座標）
-   * @param {number} crossSectionZ - 断面平面のZ座標
-   */
-  drawVerticalLinesAtDepth(targetDepth, crossSectionZ) {
-    if (!this.objectsRef || !this.objectsRef.current) {
-      return;
-    }
-    
-    const allObjects = Object.values(this.objectsRef.current);
-    
-    allObjects.forEach(obj => {
-      if (obj && obj.userData && obj.userData.objectData) {
-        const objectData = obj.userData.objectData;
-        const geometry = objectData.geometry?.[0];
-        
-        if (!geometry || !geometry.vertices || geometry.vertices.length < 2) {
-          return;
-        }
-        
-        // 管路の半径を取得（Scene3D.jsと同じロジック）
-        let radius = (objectData.attributes?.radius != null) ? Number(objectData.attributes.radius) : 0.3;
-        if (radius > 5) radius = radius / 1000;
-        radius = Math.max(radius, 0.05);
-        
-        // 管路の始点と終点を取得
-        const vertices = geometry.vertices;
-        const startVertex = vertices[0];
-        const endVertex = vertices[vertices.length - 1];
-        
-        // 深さ属性の有無をチェック（Scene3D.jsと同じロジック）
-        const hasDepthAttrs = (
-          objectData.attributes &&
-          objectData.attributes.start_point_depth != null &&
-          objectData.attributes.end_point_depth != null &&
-          Number.isFinite(Number(objectData.attributes.start_point_depth)) &&
-          Number.isFinite(Number(objectData.attributes.end_point_depth))
-        );
-        
-        let start, end;
-        if (hasDepthAttrs) {
-          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
-          // 管路の中心位置を計算するために、天端の深さから半径を引く
-          const startDepth = Number(objectData.attributes.start_point_depth / 100);
-          const endDepth = Number(objectData.attributes.end_point_depth / 100);
-          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
-          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
-          start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
-          end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
-        } else {
-          start = new THREE.Vector3(startVertex[1], startVertex[2] - radius, startVertex[0]);
-          end = new THREE.Vector3(endVertex[1], endVertex[2] - radius, endVertex[0]);
-        }
-        
-        // 管路が断面平面（Z=crossSectionZ）と交差しているかチェック
-        const minZ = Math.min(start.z, end.z) - radius;
-        const maxZ = Math.max(start.z, end.z) + radius;
-        
-        // 断面平面と交差していない管路はスキップ
-        if (crossSectionZ < minZ || crossSectionZ > maxZ) {
-          return;
-        }
-        
-        // 管路の上端と下端のY座標（startとendはすでに中心位置なので半径を加減）
-        const minY = Math.min(start.y, end.y) - radius;
-        const maxY = Math.max(start.y, end.y) + radius;
-        
-        // グリッド線が管路を切っているかチェック
-        if (targetDepth >= minY && targetDepth <= maxY) {
-          // 管路の中心軸とグリッド線（Y=targetDepth）の交点を計算
-          const direction = new THREE.Vector3().subVectors(end, start);
-          
-          // パラメトリック方程式: P = start + t * direction
-          // Y座標がtargetDepthになるtを求める
-          if (Math.abs(direction.y) > 0.001) {
-            const t = (targetDepth - start.y) / direction.y;
-            
-            // t が 0〜1 の範囲にあれば、管路の中心軸上
-            if (t >= 0 && t <= 1) {
-              const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
-              
-              // 交点が断面平面の近くにあるかチェック（許容誤差: 半径分）
-              if (Math.abs(intersectionPoint.z - crossSectionZ) > radius) {
-                return;  // 断面平面から離れすぎている場合はスキップ
-              }
-              
-              // 交差点の位置に縦線とラベルを描画（交点の深さまで）
-              const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
-              this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
-              
-              // この位置で管路の切り口（円形）も描画（CSGを使用）
-              const axisDirection = direction.clone().normalize();
-              this.drawCrossSectionCircle(intersectionPoint, radius, axisDirection, obj.material.color, obj, crossSectionZ);
+              this.pendingCrossSections.push({
+                center: intersectionPoint,
+                radius: radius,
+                axisDirection: direction.clone().normalize(),
+                color: obj.material.color,
+                pipeObject: obj,
+                crossSectionZ: crossSectionZ
+              });
             }
           }
         }
@@ -343,41 +169,37 @@ class CrossSectionPlane {
    * @param {number} depth - 深さ（Y座標）
    * @param {THREE.Vector3} center - 中心位置
    * @param {number} color - 線の色（16進数）
-   * @param {boolean} highlight - 強調表示するか（trueの場合、太く不透明にする）
-   * @param {boolean} showLabel - ラベルを表示するか（デフォルトはtrue）
+   * @param {boolean} highlight - 強調表示するか
+   * @param {boolean} showLabel - ラベルを表示するか
    */
   drawEastWestLine(depth, center, color, highlight = false, showLabel = true) {
+    // 水平方向(X軸)の基準グリッド線
     const lineLength = 1000;
-    
-    // X軸方向（東西方向）の線
     const startPoint = new THREE.Vector3(center.x - lineLength / 2, depth, center.z);
     const endPoint = new THREE.Vector3(center.x + lineLength / 2, depth, center.z);
     
-    // Line2用のLineGeometryを作成
     const lineGeometry = new LineGeometry();
     lineGeometry.setPositions([
       startPoint.x, startPoint.y, startPoint.z,
       endPoint.x, endPoint.y, endPoint.z
     ]);
     
-    // LineMaterialを使用（太い線が正しく描画される）
     const lineMaterial = new LineMaterial({
       color: color,
-      linewidth: highlight ? 5 : 2,  // ピクセル単位での太さ
+      linewidth: highlight ? 5 : 2,
       transparent: !highlight,
       opacity: highlight ? 1.0 : 0.6,
       resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-      worldUnits: false,  // ピクセル単位を使用
+      worldUnits: false,
       vertexColors: false,
       dashed: false
     });
     
     const line = new Line2(lineGeometry, lineMaterial);
-    line.computeLineDistances();  // 重要: これを呼び出さないと線が表示されない
+    line.computeLineDistances();
     this.depthLines.push(line);
     this.scene.add(line);
     
-    // 深さラベルを追加（10mごと、または強調表示の場合、かつshowLabel=trueの場合）
     const shouldShowLabel = showLabel && (highlight || (Math.abs(depth) % 10 === 0));
     if (shouldShowLabel) {
       const labelPosition = new THREE.Vector3(center.x, depth, center.z);
@@ -394,53 +216,45 @@ class CrossSectionPlane {
    * @returns {THREE.Group} - 縦線とラベルを含むグループ
    */
   drawVerticalLine(position, pipeDepth, color, radius = 0) {
-    // グループを作成（縦線とラベルを一緒に管理）
+    // 単一の縦線(床→管路上端)と深さラベルをまとめて描画
     const lineGroup = new THREE.Group();
-    
-    // グループ全体の位置を設定
     lineGroup.position.set(position.x, 0, position.z);
     
-    // 床（Y=0）から管路の上端までの縦線（グループ内の相対座標）
-    const pipeTopY = pipeDepth + radius; // 管路の上端（中心深さ + 半径）
-    const startPoint = new THREE.Vector3(0, 0, 0); // グループの原点から（地表面）
-    const endPoint = new THREE.Vector3(0, pipeTopY, 0); // Y軸方向に管路の上端まで
+    const pipeTopY = pipeDepth + radius;
+    const startPoint = new THREE.Vector3(0, 0, 0);
+    const endPoint = new THREE.Vector3(0, pipeTopY, 0);
     
-    // Line2用のLineGeometryを作成
     const lineGeometry = new LineGeometry();
     lineGeometry.setPositions([
       startPoint.x, startPoint.y, startPoint.z,
       endPoint.x, endPoint.y, endPoint.z
     ]);
     
-    // 管路の色を使用（Line2のLineMaterial）
     const lineMaterial = new LineMaterial({
       color: color,
-      linewidth: 3,  // ピクセル単位での太さ
+      linewidth: 3,
       transparent: true,
       opacity: 0.8,
       resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-      worldUnits: false,  // ピクセル単位を使用
+      worldUnits: false,
       vertexColors: false,
       dashed: false
     });
     
     const line = new Line2(lineGeometry, lineMaterial);
-    line.computeLineDistances();  // 重要: これを呼び出さないと線が表示されない
-    lineGroup.add(line); // グループに線を追加
+    line.computeLineDistances();
+    lineGroup.add(line);
     
-    // 縦線の中点にラベルを作成（グループ内の相対座標）
-    const labelY = (0 + pipeTopY) / 2; // 地表面と管路上端の中点
-    // ラベルには地表面から管路上端までの深さを表示（createDepthLabelSpriteで絶対値に変換される）
+    const labelY = pipeTopY / 2;
     const labelSprite = this.createDepthLabelSprite(pipeTopY);
-    labelSprite.position.set(0, labelY, 0); // グループの原点から相対的な位置
-    lineGroup.add(labelSprite); // グループにラベルを追加
+    labelSprite.position.set(0, labelY, 0);
+    lineGroup.add(labelSprite);
     
-    // ワールド座標でのラベル位置を計算（スケール調整用）
     const labelWorldPosition = new THREE.Vector3(position.x, labelY, position.z);
     
     this.depthLines.push(lineGroup);
-    this.depthLabels.push(labelSprite); // ラベルの参照も保持
-    this.depthLabelPositions.push(labelWorldPosition); // 位置情報も保持
+    this.depthLabels.push(labelSprite);
+    this.depthLabelPositions.push(labelWorldPosition);
     this.scene.add(lineGroup);
     
     return lineGroup;
@@ -457,16 +271,11 @@ class CrossSectionPlane {
     canvas.width = 1024;
     canvas.height = 256;
     
-    // 背景を透明にする
     context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // テキストに影をつけて見やすくする
     context.shadowColor = 'rgba(0, 0, 0, 0.9)';
     context.shadowBlur = 12;
     context.shadowOffsetX = 3;
     context.shadowOffsetY = 3;
-    
-    // テキストは常に白色
     context.fillStyle = 'white';
     context.font = 'Bold 120px Arial';
     context.textAlign = 'center';
@@ -477,11 +286,11 @@ class CrossSectionPlane {
     texture.needsUpdate = true;
     const spriteMaterial = new THREE.SpriteMaterial({
       map: texture,
-      depthTest: false,  // 線の後ろに隠れないようにする
+      depthTest: false,
       transparent: true
     });
     const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.scale.set(2, 0.5, 1);  // 初期スケール
+    sprite.scale.set(2, 0.5, 1);
     
     return sprite;
   }
@@ -490,18 +299,44 @@ class CrossSectionPlane {
    * 深さラベルを描画
    * @param {number} depth - 深さ（Y座標）
    * @param {THREE.Vector3} position - ラベル位置
-   * @param {number} color - ラベルの色（16進数、デフォルトは白）※現在未使用、常に白色で表示
-   * @param {number} xOffset - X座標のオフセット（デフォルトは-5、横線用）
+   * @param {number} color - ラベルの色（未使用）
+   * @param {number} xOffset - X座標のオフセット（デフォルトは-5）
    */
   drawDepthLabel(depth, position, color = 0xffffff, xOffset = -5) {
     const sprite = this.createDepthLabelSprite(depth);
     const labelPosition = new THREE.Vector3(position.x + xOffset, position.y, position.z);
     sprite.position.copy(labelPosition);
     
-    // スプライトと位置を配列に追加（スケール調整用）
     this.depthLabels.push(sprite);
     this.depthLabelPositions.push(labelPosition);
     this.scene.add(sprite);
+  }
+
+  /**
+   * 収集したすべての断面情報を一度に描画
+   */
+  drawAllPendingCrossSections() {
+    // 収集済みの断面リクエストを重複除去して一括描画
+    const uniqueSections = new Map();
+    this.pendingCrossSections.forEach(section => {
+      const key = `${section.pipeObject.id || section.pipeObject.uuid}_${section.crossSectionZ}`;
+      if (!uniqueSections.has(key)) {
+        uniqueSections.set(key, section);
+      }
+    });
+    
+    uniqueSections.forEach(section => {
+      this.drawCrossSectionCircle(
+        section.center,
+        section.radius,
+        section.axisDirection,
+        section.color,
+        section.pipeObject,
+        section.crossSectionZ
+      );
+    });
+    
+    this.pendingCrossSections = [];
   }
 
   /**
@@ -509,50 +344,18 @@ class CrossSectionPlane {
    * CSGを使用して垂直面で切断した断面を表示
    */
   drawCrossSectionCircle(center, radius, axisDirection, color, pipeObject = null, crossSectionZ = null) {
-    // NaNチェック
-    if (isNaN(center.x) || isNaN(center.y) || isNaN(center.z)) {
-      console.warn('断面の中心座標にNaNが含まれています', center);
+    // CSGにより断面形状(交差部分)のみを生成
+    if (isNaN(center.x) || isNaN(center.y) || isNaN(center.z) || isNaN(radius) || radius <= 0) {
       return;
     }
     
-    if (isNaN(radius) || radius <= 0) {
-      console.warn('断面の半径が不正です', radius);
-      return;
-    }
-    
-    // CSGを使用して垂直面で切断した断面を作成
     if (pipeObject && crossSectionZ !== null) {
       try {
         this.drawCSGCrossSection(pipeObject, crossSectionZ, color);
-        return;
       } catch (error) {
         console.error('CSG断面の作成に失敗しました:', error);
-        // フォールバック：従来の円形断面を表示
       }
     }
-    
-    // フォールバック：円形の断面（従来の方法）
-    const circleGeometry = new THREE.CircleGeometry(radius, 32);
-    const circleMaterial = new THREE.MeshBasicMaterial({
-      color: color || 0x00ff00,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8
-    });
-    
-    const circleMesh = new THREE.Mesh(circleGeometry, circleMaterial);
-    circleMesh.position.copy(center);
-    
-    // 管路の軸方向に向ける
-    const quaternion = new THREE.Quaternion();
-    quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axisDirection);
-    circleMesh.setRotationFromQuaternion(quaternion);
-    
-    // 表示状態を設定（デフォルトは非表示）
-    circleMesh.visible = this.showCrossSections;
-    
-    this.crossSections.push(circleMesh);
-    this.scene.add(circleMesh);
   }
 
   /**
@@ -562,13 +365,11 @@ class CrossSectionPlane {
    * @param {THREE.Color} color - 断面の色
    */
   drawCSGCrossSection(pipeObject, crossSectionZ, color) {
-    // 管路のジオメトリとマテリアルを取得
+    // 元メッシュを複製し、薄いボックスとの交差(Intersect)で断面メッシュを得る
     if (!pipeObject.geometry) {
-      console.warn('管路のジオメトリが見つかりません');
       return;
     }
     
-    // 管路のクローンを作成（元のメッシュを変更しないため）
     const pipeMesh = new THREE.Mesh(
       pipeObject.geometry.clone(),
       new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide })
@@ -578,42 +379,29 @@ class CrossSectionPlane {
     pipeMesh.scale.copy(pipeObject.scale);
     pipeMesh.updateMatrix();
     
-    // 断面平面を表す薄いボックスを作成（垂直面）
-    const planeThickness = 0.01; // 薄いボックス
-    const planeSize = 1000; // 十分に大きなサイズ
-    const planeGeometry = new THREE.BoxGeometry(planeSize, planeSize, planeThickness);
-    const planeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
-    
-    // 断面平面の位置を設定（Z軸に垂直）
+    const planeGeometry = new THREE.BoxGeometry(1000, 1000, 0.01);
+    const planeMesh = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
     planeMesh.position.set(0, 0, crossSectionZ);
     planeMesh.updateMatrix();
     
-    // CSGで交差部分を計算
     const intersectionMesh = CSG.intersect(pipeMesh, planeMesh);
-    
-    // 結果のマテリアルを設定
     intersectionMesh.material = new THREE.MeshBasicMaterial({
       color: color,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.8
     });
-    
-    // 表示状態を設定（デフォルトは非表示）
     intersectionMesh.visible = this.showCrossSections;
     
     this.crossSections.push(intersectionMesh);
     this.scene.add(intersectionMesh);
-    
-    console.log('CSGで断面を作成しました:', crossSectionZ);
   }
 
   /**
    * 断面をクリア
    */
   clear() {
-    // 深さ線を削除
+    // 表示済みの線・ラベル・断面メッシュをすべて破棄
     this.depthLines.forEach(line => {
       this.scene.remove(line);
       if (line.geometry) line.geometry.dispose();
@@ -621,7 +409,6 @@ class CrossSectionPlane {
     });
     this.depthLines = [];
     
-    // 深さラベルを削除
     this.depthLabels.forEach(sprite => {
       this.scene.remove(sprite);
       if (sprite.material) {
@@ -630,15 +417,12 @@ class CrossSectionPlane {
       }
     });
     this.depthLabels = [];
-    this.depthLabelPositions = [];  // 位置配列もクリア
+    this.depthLabelPositions = [];
     
-    // 断面形状を削除
     this.crossSections.forEach(mesh => {
       this.scene.remove(mesh);
       if (mesh.geometry) mesh.geometry.dispose();
       if (mesh.material) mesh.material.dispose();
-      
-      // 子要素（輪郭線）も削除
       mesh.traverse(child => {
         if (child.geometry) child.geometry.dispose();
         if (child.material) child.material.dispose();
@@ -652,43 +436,34 @@ class CrossSectionPlane {
    * @param {boolean} show - 表示するかどうか
    */
   toggleCrossSections(show) {
+    // 生成済みの断面メッシュの可視/不可視を切り替え
     this.showCrossSections = show;
-    
-    // 既存の切り口の表示を切り替え
     this.crossSections.forEach(crossSection => {
       crossSection.visible = show;
     });
-    
-    console.log(`切り口を${show ? '表示' : '非表示'}にしました（切り口の数: ${this.crossSections.length}）`);
   }
 
   /**
    * 深さラベルのスケールをカメラからの距離に応じて更新
    */
   update() {
+    // カメラ距離に応じて深さラベルのスケールを調整
     if (!this.camera || this.depthLabels.length === 0) {
       return;
     }
     
-    // スケール調整パラメータ
     const baseDistance = 20;
     const baseScale = 2;
     const minScale = 0.5;
     const maxScale = 5;
     
-    // 各深さラベルのスプライトのスケールを更新
     for (let i = 0; i < this.depthLabels.length; i++) {
       const sprite = this.depthLabels[i];
       const position = this.depthLabelPositions[i];
       
       if (sprite && position) {
-        // カメラから位置までの距離を計算
         const distance = this.camera.position.distanceTo(position);
-        
-        // 距離に応じてスケールを調整
         const scaleFactor = Math.max(minScale, Math.min(maxScale, (distance / baseDistance) * baseScale));
-        
-        // アスペクト比を維持してスケールを適用（高さは幅の1/4）
         sprite.scale.set(scaleFactor, scaleFactor * 0.25, 1);
       }
     }
@@ -699,14 +474,10 @@ class CrossSectionPlane {
    * Line2のLineMaterialのresolutionを更新
    */
   handleResize(width, height) {
-    const resolution = new THREE.Vector2(width, height);
-    
-    // すべてのdepthLinesのLineMaterialのresolutionを更新
     this.depthLines.forEach(line => {
       if (line.material && line.material.resolution) {
         line.material.resolution.set(width, height);
       }
-      // グループの場合は子要素をチェック
       if (line.children) {
         line.children.forEach(child => {
           if (child.material && child.material.resolution) {
@@ -722,6 +493,50 @@ class CrossSectionPlane {
    */
   dispose() {
     this.clear();
+  }
+
+  /**
+   * 管路の半径を取得
+   * @param {Object} objectData - 管路オブジェクトのデータ
+   * @returns {number} - 管路の半径
+   */
+  getPipeRadius(objectData) {
+    let radius = (objectData.attributes?.radius != null) ? Number(objectData.attributes.radius) : 0.3;
+    if (radius > 5) radius = radius / 1000;
+    return Math.max(radius, 0.05);
+  }
+
+  /**
+   * 管路の始点と終点を計算
+   * @param {Array} startVertex - 始点の頂点データ
+   * @param {Array} endVertex - 終点の頂点データ
+   * @param {Object} objectData - 管路オブジェクトのデータ
+   * @param {number} radius - 管路の半径
+   * @returns {Object} - {start, end} 始点と終点のVector3
+   */
+  getPipeStartEnd(startVertex, endVertex, objectData, radius) {
+    const hasDepthAttrs = (
+      objectData.attributes &&
+      objectData.attributes.start_point_depth != null &&
+      objectData.attributes.end_point_depth != null &&
+      Number.isFinite(Number(objectData.attributes.start_point_depth)) &&
+      Number.isFinite(Number(objectData.attributes.end_point_depth))
+    );
+
+    let start, end;
+    if (hasDepthAttrs) {
+      const startDepth = Number(objectData.attributes.start_point_depth / 100);
+      const endDepth = Number(objectData.attributes.end_point_depth / 100);
+      const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
+      const endCenterY = endDepth >= 0 ? -(endDepth + radius) : endDepth;
+      start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
+      end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
+    } else {
+      start = new THREE.Vector3(startVertex[1], startVertex[2] - radius, startVertex[0]);
+      end = new THREE.Vector3(endVertex[1], endVertex[2] - radius, endVertex[0]);
+    }
+
+    return { start, end };
   }
 }
 

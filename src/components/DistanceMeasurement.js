@@ -235,11 +235,9 @@ class DistanceMeasurement {
         this.calculateDistance();
       } else {
         // 同じオブジェクトをクリックした場合は何もしない
-        console.log('同じオブジェクトが選択されました。異なるオブジェクトを選択してください。');
       }
     } else {
-      // 管路以外をクリックした場合
-      console.log('管路を選択してください。');
+      // 管路以外をクリックした場合は何もしない
     }
 
     this.isMeasuring = false;

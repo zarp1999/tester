@@ -106,6 +106,9 @@ constructor(scene, camera, objectsRef) {
   
   // 表示状態
   this.showCrossSections = false;  // 断面形状の表示フラグ（7キーで切替）
+  
+  // 断面描画情報を一時的に保存する配列（重複除去用）
+  this.pendingCrossSections = [];  // {center, radius, axisDirection, color, pipeObject, crossSectionZ}
 }
 ```
 
@@ -119,7 +122,9 @@ constructor(scene, camera, objectsRef) {
 | `depthLines` | Array | グリッド線と縦線の配列 |
 | `crossSections` | Array | CSG断面形状の配列 |
 | `depthLabels` | Array | 深さラベルの配列 |
+| `depthLabelPositions` | Array | ラベル位置（スケール調整用） |
 | `showCrossSections` | Boolean | 断面形状の表示/非表示 |
+| `pendingCrossSections` | Array | 断面描画情報の一時保存配列（重複除去用） |
 
 ---
 
@@ -259,33 +264,42 @@ const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t))
 
 #### ステップ4: グリッド線の描画
 ```javascript
-// 0m〜-50m、1m間隔
+// 0m〜-50m、1m間隔で水平グリッド線を描画
 for (let depth = 0; depth >= -50; depth -= 1) {
   this.drawEastWestLine(depth, linePosition, 0x888888, false);
-  this.drawVerticalLinesAtDepth(depth, clickPoint.z);
 }
 ```
 
-#### ステップ5: クリックした管路の縦線描画
+#### ステップ5: すべての管路の縦線描画
 ```javascript
-this.drawVerticalLine(linePosition, intersectionPoint.y, color, radius);
+// 断面平面Z上で交差するすべての管路（クリックした管路も含む）に縦線を描画
+this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, null);
 ```
 
-#### ステップ6: 他の管路の縦線描画
+**変更点**: 
+- `excludePipeObject`を`null`にすることで、クリックした管路も含めてすべての管路を一括処理
+- 個別にクリックした管路の縦線を描画していた処理を削除し、重複を解消
+
+#### ステップ6: CSG断面描画
 ```javascript
-this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, pipeObject);
+// 重複を除去して一括描画
+this.drawAllPendingCrossSections();
 ```
 
-#### ステップ7: CSG断面描画
-```javascript
-this.drawCrossSectionCircle(center, radius, axisDirection, color, pipeObject, clickPoint.z);
-```
+**処理の流れ**:
+1. `drawVerticalLinesAtCrossSectionPlane`内で断面情報を`pendingCrossSections`に収集
+2. `drawAllPendingCrossSections`で重複除去（同じ管路の断面が複数回登録されるのを防ぐ）
+3. 各断面に対して`drawCrossSectionCircle`を呼び出し
 
 ---
 
 ### 3. `drawVerticalLinesAtCrossSectionPlane(crossSectionZ, excludePipeObject)`
 
-**目的**: 断面平面と交差する他の管路に縦線を描画
+**目的**: 断面平面と交差するすべての管路に縦線を描画
+
+**変更点**: 
+- `excludePipeObject`が`null`の場合、クリックした管路も含めてすべての管路を処理
+- これにより、個別の縦線描画処理が不要になり、コードが簡潔になった
 
 **重要なチェック**:
 ```javascript
@@ -302,41 +316,7 @@ if (t >= 0 && t <= 1) {
 
 ---
 
-### 4. `drawVerticalLinesAtDepth(targetDepth, crossSectionZ)`
-
-**目的**: グリッド線の深さで管路を切っている位置に縦線を描画
-
-**重要なチェック**:
-```javascript
-// 1. グリッド線が管路を切っているか
-if (targetDepth >= minY && targetDepth <= maxY) {
-  // Y座標がtargetDepthになる交点を計算
-  const t = (targetDepth - start.y) / direction.y;
-  
-  // 2. 交点が断面平面の近くにあるか
-  if (Math.abs(intersectionPoint.z - crossSectionZ) <= radius) {
-    // 縦線を描画
-  }
-}
-```
-
-**なぜこのチェックが必要か**:
-
-長い管路の場合、グリッド線との交点が断面平面から離れている可能性があります。
-
-```
-管路: Z=100 〜 Z=200（長さ100m）
-断面平面: Z=150
-グリッド線: Y=-7m
-
-交点のZ座標が140mの場合:
-→ 断面平面（Z=150）から10m離れている
-→ スキップする
-```
-
----
-
-### 5. `drawVerticalLine(position, pipeDepth, color, radius)`
+### 4. `drawVerticalLine(position, pipeDepth, color, radius)`
 
 **目的**: 地表面から管路の上端まで縦線を描画
 
@@ -367,7 +347,7 @@ this.scene.add(lineGroup);
 
 ---
 
-### 6. `drawEastWestLine(depth, center, color, highlight, showLabel)`
+### 5. `drawEastWestLine(depth, center, color, highlight, showLabel)`
 
 **目的**: 東西方向（X軸方向）のグリッド線を描画
 
@@ -392,6 +372,51 @@ if (showLabel && (highlight || Math.abs(depth) % 10 === 0)) {
   this.drawDepthLabel(depth, labelPosition, color);
 }
 ```
+
+---
+
+### 5. `drawAllPendingCrossSections()`
+
+**目的**: 収集した断面情報を重複除去して一括描画
+
+**処理**:
+```javascript
+// 1. 重複除去（同じ管路の同一断面を一度だけ描画）
+const uniqueSections = new Map();
+this.pendingCrossSections.forEach(section => {
+  const key = `${section.pipeObject.id || section.pipeObject.uuid}_${section.crossSectionZ}`;
+  if (!uniqueSections.has(key)) {
+    uniqueSections.set(key, section);
+  }
+});
+
+// 2. 各断面を描画
+uniqueSections.forEach(section => {
+  this.drawCrossSectionCircle(
+    section.center,
+    section.radius,
+    section.axisDirection,
+    section.color,
+    section.pipeObject,
+    section.crossSectionZ
+  );
+});
+
+// 3. 配列をクリア
+this.pendingCrossSections = [];
+```
+
+**なぜ必要か**: 
+- `drawVerticalLinesAtCrossSectionPlane`がすべての管路を処理するため、同じ管路の断面情報が複数回追加される可能性がある
+- 重複を除去することで、同じ断面が重複描画されることを防ぐ
+
+---
+
+### 6. `drawCrossSectionCircle(center, radius, axisDirection, color, pipeObject, crossSectionZ)`
+
+**目的**: 管路の断面（円形）を描画するためのエントリーポイント
+
+**処理**: `drawCSGCrossSection`を呼び出してCSG断面を生成
 
 ---
 
@@ -569,11 +594,9 @@ this.crossSections = [];
    ├─ 管路データの取得と座標変換
    ├─ 断面平面との交点計算
    ├─ グリッド線の描画 (drawEastWestLine)
-   ├─ クリックした管路の縦線描画 (drawVerticalLine)
-   ├─ 他の管路の縦線描画
-   │  ├─ drawVerticalLinesAtCrossSectionPlane
-   │  └─ drawVerticalLinesAtDepth
-   └─ CSG断面の描画 (drawCrossSectionCircle → drawCSGCrossSection)
+   ├─ すべての管路の縦線描画 (drawVerticalLinesAtCrossSectionPlane)
+   │  └─ 断面平面Z上で交差するすべての管路（クリックした管路も含む）を処理
+   └─ CSG断面の描画 (drawAllPendingCrossSections → drawCrossSectionCircle → drawCSGCrossSection)
    ↓
 5. シーンに表示
    ↓
@@ -613,18 +636,7 @@ const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
 const startCenterY = startDepth > 0 ? -(startDepth + radius) : startDepth;
 ```
 
-### 問題2: 長い管路で不要な縦線が表示される
-
-**原因**: グリッド線と管路の交点が断面平面から離れている
-
-**解決方法**: 交点のZ座標をチェック
-```javascript
-if (Math.abs(intersectionPoint.z - crossSectionZ) > radius) {
-  return;  // 断面平面から離れすぎている場合はスキップ
-}
-```
-
-### 問題3: 傾斜管路で縦線の位置がずれる
+### 問題2: 傾斜管路で縦線の位置がずれる
 
 **原因**: 管路全体の最も高い位置を使用していた
 
@@ -637,7 +649,7 @@ const pipeDepth = intersectionPoint.y;
 const pipeDepth = Math.max(start.y, end.y);
 ```
 
-### 問題4: ラベルに0が表示されない
+### 問題3: ラベルに0が表示されない
 
 **原因**: 深さ0の管路で縦線が地表面より上に描画されている
 
@@ -646,7 +658,7 @@ const pipeDepth = Math.max(start.y, end.y);
 const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
 ```
 
-### 問題5: メモリリーク
+### 問題4: メモリリーク
 
 **原因**: dispose()を呼んでいない
 

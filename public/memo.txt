@@ -391,3 +391,82 @@ tester/
 ---
 
 **開発者向けメモ**: このプロジェクトは React Scripts を使用しているため、設定のカスタマイズが必要な場合は `npm run eject` を実行してください（不可逆的な操作です）。
+
+# tester アプリケーション
+
+Three.js を用いた 3D 表示/断面表示/距離計測を行う React アプリです。
+
+## 主な機能
+
+- 3D シーン表示（`src/components/Scene3D.js`）
+  - CityJSON 由来のオブジェクトを生成・表示
+  - カメラ操作（OrbitControls / キー操作）
+  - ガイド（画面左上・左下）の表示切替
+- 断面表示（`src/components/CrossSectionPlane.js`）
+  - クリックした管路の Z 位置を断面平面として採用
+  - 断面平面と交差する管路位置に縦線・深さラベルを描画
+  - CSG（三角形メッシュ同士の交差）で切り口メッシュを生成
+- 距離計測（`src/components/DistanceMeasurement.js`）
+  - 左Shift + 左ドラッグで「指定距離」
+  - 最近接距離の算出と描画
+  - 5 キーで表示の切替、Esc でクリア
+
+## キー操作（抜粋）
+
+- マウス右ドラッグ: 回転 / 中クリック: ズーム
+- W/A/S/D, Q/E: 上下・左右・前後移動（Shift で低速）
+- Y/P/O: 位置・向きの初期化
+- 1: ガイド表示切替、2: 背景、7: 管路（断面モード時は切り口と連動）、9: 地表面
+- Backspace: 断面クリア（断面モード時）
+
+## 断面表示の概要
+
+- クリック位置の Z を断面平面とし、全管路を走査
+- 交差する管路の位置に縦線（床→管路上端）と深さラベルを描画
+- 断面の切り口は CSG で生成し、表示/非表示を切替可能
+
+## 開発環境
+
+- Node.js 16 以上推奨
+- パッケージマネージャ: npm
+
+### セットアップ
+
+```bash
+npm install
+```
+
+### 開発サーバの起動
+
+```bash
+npm start
+```
+
+http://localhost:3000 をブラウザで開きます。
+
+### ビルド
+
+```bash
+npm run build
+```
+
+`build/` に成果物が出力されます。
+
+## データファイル（public/）
+
+- `Cityjson_sample.json`: 3D オブジェクト生成元
+- `layer_panel.json`: 材質や種別ごとの色/透明度の定義
+- `shape_type.json`, `source_types.json`: 形状/ソース種別マスタ
+- `user_pos_1.json`: 初期カメラ位置情報（任意）
+
+## ディレクトリ
+
+- `src/components/Scene3D.js`: 3D シーン本体
+- `src/components/CrossSectionPlane.js`: 断面描画ロジック
+- `src/components/DistanceMeasurement.js`: 距離計測ロジック
+- `src/components/PipelineInfoDisplay.js`: 管路情報 UI
+
+## 注意事項
+
+- 大規模データを読み込む場合、ブラウザ/環境の制約により描画負荷が高くなる可能性があります。
+- 断面表示の CSG はメッシュ形状に依存し、入力データ不備がある場合は表示されないことがあります。

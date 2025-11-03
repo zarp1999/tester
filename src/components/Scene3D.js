@@ -4,11 +4,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
-import InfiniteGridHelper from './InfiniteGridHelper';
 import { DistanceMeasurement, DistanceMeasurementDisplay } from './DistanceMeasurement';
 import CrossSectionPlane from './CrossSectionPlane';
 import './Scene3D.css';
@@ -66,12 +63,6 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     yaw: 0.0
   });
 
-
-
-
-
-
-
   // 選択されたオブジェクトのstate
   const [selectedObject, setSelectedObject] = useState(null);
   const [showGuides, setShowGuides] = useState(true);
@@ -85,15 +76,15 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
   // showPipes が変更されたときに管路オブジェクトの表示/非表示を切り替え
   useEffect(() => {
     if (!objectsRef.current) return;
-    
+
     // 全ての管路オブジェクトのvisibleプロパティを更新
     Object.values(objectsRef.current).forEach(obj => {
       if (obj && obj.type === 'Mesh') {
         obj.visible = showPipes;
       }
     });
-    
-    console.log(`管路の表示を${showPipes ? '表示' : '非表示'}に切り替えました`);
+
+    // 表示切替ログは不要のため削除
   }, [showPipes]);
 
   // 距離計測結果が更新されたときに親コンポーネントに通知
@@ -167,8 +158,8 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
-          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
+          const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
+          const endCenterY = endDepth >= 0 ? -(endDepth + radius) : endDepth;
           startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
           endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
@@ -233,27 +224,27 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     // 断面図モードの場合は、よりフラットで技術的な見た目にする
     const material = hideBackground
       ? new THREE.MeshLambertMaterial({
-          color: colorHex,
-          transparent: opacity < 1,
-          opacity,
-          flatShading: true,  // フラットシェーディングで断面図らしく
-          emissive: new THREE.Color(colorHex).multiplyScalar(0.2),  // 少し自己発光させて見やすく
-          emissiveIntensity: 0.3
-        })
+        color: colorHex,
+        transparent: opacity < 1,
+        opacity,
+        flatShading: true,  // フラットシェーディングで断面図らしく
+        emissive: new THREE.Color(colorHex).multiplyScalar(0.2),  // 少し自己発光させて見やすく
+        emissiveIntensity: 0.3
+      })
       : new THREE.MeshStandardMaterial({
-          color: colorHex,
-          metalness: 0.6,
-          roughness: 0.4,
-          transparent: opacity < 1,
-          opacity,
+        color: colorHex,
+        metalness: 0.6,
+        roughness: 0.4,
+        transparent: opacity < 1,
+        opacity,
 
-          // // リアルな質感を追加
-          // envMapIntensity: 0.8,  // 環境マッピングの強度
+        // // リアルな質感を追加
+        // envMapIntensity: 0.8,  // 環境マッピングの強度
 
-          // // 深度感を出すために微妙な自己発光
-          // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
-          // emissiveIntensity: 0.05
-        });
+        // // 深度感を出すために微妙な自己発光
+        // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
+        // emissiveIntensity: 0.05
+      });
 
     const mesh = new THREE.Mesh(geometry, material);
 
@@ -285,8 +276,8 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         if (hasDepthAttrs) {
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = startDepth >= 0 ? -(startDepth + radius): startDepth;
-          const endCenterY = endDepth >= 0 ? -(endDepth + radius): endDepth;
+          const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
+          const endCenterY = endDepth >= 0 ? -(endDepth + radius) : endDepth;
           startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
           endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
@@ -530,9 +521,9 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       const clickedObject = visibleIntersects[0].object;
 
       // すでに選択されているオブジェクトで、かつCtrlキーが押されている場合のみドラッグ開始
-      if (clickedObject.userData.objectData && 
-          clickedObject === selectedMeshRef.current && 
-          event.ctrlKey) {
+      if (clickedObject.userData.objectData &&
+        clickedObject === selectedMeshRef.current &&
+        event.ctrlKey) {
         // 選択されたオブジェクトをドラッグ開始
         isDragging.current = true;
 
@@ -687,7 +678,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         // 断面モードの場合は断面を生成
         if (enableCrossSectionMode && crossSectionRef.current) {
           crossSectionRef.current.createCrossSection(clickedObject, clickPoint);
-          console.log('断面を生成:', clickedObject.userData.objectData, 'クリック位置:', clickPoint);
+          // デバッグログ削除
         } else {
           // 通常モードの場合は選択
           setSelectedObject(clickedObject.userData.objectData);
@@ -1013,7 +1004,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     cameraRef.current = camera;
 
     // レンダラーの作成
-    const renderer = new THREE.WebGLRenderer({ 
+    const renderer = new THREE.WebGLRenderer({
       antialias: true,
       preserveDrawingBuffer: false,
       powerPreference: "high-performance"
@@ -1032,11 +1023,9 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       event.preventDefault();
       console.warn('WebGL context lost. Preventing default behavior.');
     };
-    
-    const handleContextRestored = () => {
-      console.log('WebGL context restored.');
-    };
-    
+
+    const handleContextRestored = () => {};
+
     renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
     renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
 
@@ -1145,7 +1134,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     // 3Dシーン画面でのみ有効化を試行
     let composer = null;
     let outlinePass = null;
-    
+
     if (!enableCrossSectionMode) {
       try {
         // 3Dシーン画面でのみEffectComposerを使用
@@ -1161,7 +1150,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           scene,
           camera
         );
-        
+
         // シンプルなアウトライン設定
         outlinePass.edgeStrength = 3.0;
         outlinePass.edgeGlow = 0.0; // 発光なし
@@ -1169,19 +1158,19 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         outlinePass.pulsePeriod = 0;
         outlinePass.visibleEdgeColor.set('#ffff00');
         outlinePass.hiddenEdgeColor.set('#ffaa00');
-        
+
         composer.addPass(outlinePass);
-        
-        console.log('✅ EffectComposer and OutlinePass enabled for 3D Scene');
+
+        // デバッグログ削除
       } catch (error) {
-        console.error('❌ Failed to initialize EffectComposer:', error);
+        console.error('Failed to initialize EffectComposer:', error);
         composer = null;
         outlinePass = null;
       }
     } else {
-      console.log('ℹ️ EffectComposer disabled for Cross-Section View');
+      // デバッグログ削除
     }
-    
+
     composerRef.current = composer;
     outlinePassRef.current = outlinePass;
 
@@ -1222,16 +1211,16 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       if (!mountRef.current) return;
       const width = mountRef.current.clientWidth;
       const height = mountRef.current.clientHeight;
-      
+
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
-      
+
       // Composerが有効な場合のみリサイズ
       if (composerRef.current) {
         composerRef.current.setSize(width, height);
       }
-      
+
       // CrossSectionPlaneのLine2マテリアルのresolutionを更新
       if (crossSectionRef.current) {
         crossSectionRef.current.handleResize(width, height);
@@ -1396,7 +1385,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       if (keysPressed.current['backspace']) {
         if (enableCrossSectionMode && crossSectionRef.current) {
           crossSectionRef.current.clear();
-          console.log('断面をクリア');
+          // デバッグログ削除
         }
         keysPressed.current['backspace'] = false;
       }
@@ -1517,7 +1506,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     return () => {
       // mountRef.currentを一時変数に保存（null化される前に）
       const currentMount = mountRef.current;
-      
+
       // 距離計測のクリーンアップ（最初に実行）
       if (distanceMeasurementRef.current && currentMount) {
         try {
@@ -1526,7 +1515,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           console.error('距離計測のクリーンアップでエラー:', error);
         }
       }
-      
+
       // 断面図のクリーンアップ
       if (crossSectionRef.current) {
         try {
@@ -1535,7 +1524,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           console.error('断面図のクリーンアップでエラー:', error);
         }
       }
-      
+
       // イベントリスナーの削除
       try {
         window.removeEventListener('resize', handleResize);
@@ -1554,7 +1543,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       } catch (error) {
         console.error('DOMイベントリスナーの削除でエラー:', error);
       }
-      
+
       // コンポーネントのクリーンアップ
       if (skyComponentRef.current) {
         skyComponentRef.current.dispose();
@@ -1562,7 +1551,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       if (controlsRef.current) {
         controlsRef.current.dispose();
       }
-      
+
       // コンポーザーのクリーンアップ
       if (composerRef.current) {
         composerRef.current = null;
@@ -1570,7 +1559,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       if (outlinePassRef.current) {
         outlinePassRef.current = null;
       }
-      
+
       // シーン内のすべてのオブジェクトをクリーンアップ
       if (scene) {
         scene.traverse((object) => {
@@ -1591,7 +1580,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         });
         scene.clear();
       }
-      
+
       // レンダラーのクリーンアップ
       if (renderer) {
         // レンダラーのdisposeでイベントリスナーも自動的にクリーンアップされます
