@@ -160,3 +160,98 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+/* 断面自動作成モードのトグルスイッチ（右上） */
+.auto-mode-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px 15px;
+  border-radius: 5px;
+  color: white;
+}
+
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.toggle-switch input[type="checkbox"] {
+  width: 40px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.toggle-label {
+  user-select: none;
+}
+
+/* 断面自動作成モードの設定テーブル */
+.auto-mode-settings {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.auto-mode-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  color: white;
+}
+
+.auto-mode-table th,
+.auto-mode-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.auto-mode-table th {
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: normal;
+}
+
+.auto-mode-table td input[type="number"] {
+  width: 80px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  color: white;
+  font-size: 10px;
+}
+
+.auto-mode-table td input[type="number"]:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.unit {
+  margin-left: 5px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 9px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.checkbox-label span {
+  user-select: none;
+}
+

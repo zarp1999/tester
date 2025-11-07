@@ -501,9 +501,9 @@ class CrossSectionPlane {
    * @returns {number} - 管路の半径
    */
   getPipeRadius(objectData) {
-    let radius = (objectData.attributes?.radius != null) ? Number(objectData.attributes.radius) : 0.3;
+    let radius = (objectData.attributes?.radius != null) ? Number(objectData.attributes.radius) : 0;
     if (radius > 5) radius = radius / 1000;
-    return Math.max(radius, 0.05);
+    return radius;
   }
 
   /**
@@ -527,8 +527,8 @@ class CrossSectionPlane {
     if (hasDepthAttrs) {
       const startDepth = Number(objectData.attributes.start_point_depth / 100);
       const endDepth = Number(objectData.attributes.end_point_depth / 100);
-      const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
-      const endCenterY = endDepth >= 0 ? -(endDepth + radius) : endDepth;
+      const startCenterY = startDepth > 0 ? -(startDepth + radius) : startDepth;
+      const endCenterY = endDepth > 0 ? -(endDepth + radius) : endDepth;
       start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
       end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
     } else {

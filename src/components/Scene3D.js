@@ -14,7 +14,7 @@ import './Scene3D.css';
  * 3Dシーンコンポーネント
  * - CityJSONの内容からオブジェクトを生成
  * - キー/マウスによるカメラ操作
- * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
+ * - 左上: 管路情報、左下: カメラ情報
  */
 function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, onMeasurementUpdate = null }) {
   const mountRef = useRef(null);
@@ -83,8 +83,6 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         obj.visible = showPipes;
       }
     });
-
-    // 表示切替ログは不要のため削除
   }, [showPipes]);
 
   // 距離計測結果が更新されたときに親コンポーネントに通知
@@ -100,8 +98,6 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
   // 3Dオブジェクトの作成（shape/color対応）
   /**
    * CityJSONオブジェクトからThree.jsメッシュを生成する。
-   * - shape_type（例: Cylinder）と geometry.type（例: LineString）で分岐
-   * - source_type_id/layer_panel で色・透明度を決定
    */
   const createCityObject = (obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap, materialValStyleMap, pipeKindValStyleMap) => {
     let geometry;
@@ -142,34 +138,29 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
 
-        // 半径を先に計算（天端から中心位置を算出するため）
+        // 半径を先に計算
         let radius;
         if (shapeTypeName === 'Cylinder' || shapeTypeName === 'MultiCylinder') {
-          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0;
           if (radius > 5) radius = radius / 1000;
           radius = Math.max(radius, 0.05);
         } else {
           radius = 0.05;
         }
-
         let startPoint, endPoint;
         if (hasDepthAttrs) {
-          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
-          // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
-          const endCenterY = endDepth >= 0 ? -(endDepth + radius) : endDepth;
+          const startCenterY = startDepth > 0 ? -(startDepth + radius) : startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth + radius) : endDepth;
           startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
           endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
-          // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
-          // 頂点座標も天端を表すと仮定し、半径を引いて中心位置を計算
           startPoint = new THREE.Vector3(start[1], start[2] + radius, start[0]);
           endPoint = new THREE.Vector3(end[1], end[2] + radius, end[0]);
         }
 
-        // 円柱の高さと方向を計算
+        // 円柱の高さを計算
         const height = startPoint.distanceTo(endPoint);
         geometry = new THREE.CylinderGeometry(radius, radius, height, 24);
       } else {
@@ -221,7 +212,6 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       }
     }
 
-    // 断面図モードの場合は、よりフラットで技術的な見た目にする
     const material = hideBackground
       ? new THREE.MeshLambertMaterial({
         color: colorHex,
@@ -238,12 +228,8 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         transparent: opacity < 1,
         opacity,
 
-        // // リアルな質感を追加
-        // envMapIntensity: 0.8,  // 環境マッピングの強度
-
-        // // 深度感を出すために微妙な自己発光
-        // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
-        // emissiveIntensity: 0.05
+        emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
+        emissiveIntensity: 0.05
       });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -262,10 +248,10 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
 
-        // 半径を先に計算（天端から中心位置を算出するため）
+        // 半径を先に計算
         let radius;
         if (shapeTypeName === 'Cylinder' || shapeTypeName === 'MultiCylinder') {
-          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0;
           if (radius > 5) radius = radius / 1000;
           radius = Math.max(radius, 0.05);
         } else {
@@ -276,27 +262,25 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         if (hasDepthAttrs) {
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = startDepth >= 0 ? -(startDepth + radius) : startDepth;
-          const endCenterY = endDepth >= 0 ? -(endDepth + radius) : endDepth;
+          const startCenterY = startDepth > 0 ? -(startDepth + radius) : startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth + radius) : endDepth;
           startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
           endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
           startPoint = new THREE.Vector3(start[1], start[2] + radius, start[0]);
           endPoint = new THREE.Vector3(end[1], end[2] + radius, end[0]);
         }
-        // 円柱を正しい方向に回転
         const direction = endPoint.clone().sub(startPoint).normalize();
         const up = new THREE.Vector3(0, 1, 0);
         const quaternion = new THREE.Quaternion();
         quaternion.setFromUnitVectors(up, direction);
-        // geometry.applyQuaternion(quaternion);
         mesh.setRotationFromQuaternion(quaternion);
         const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
         mesh.position.copy(center);
       }
     } else {
       const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
-      mesh.position.set(center[0], center[2], center[1]);
+      mesh.position.set(center[1], center[2], center[0]);
     }
 
     mesh.castShadow = true;
@@ -359,7 +343,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       const color = entry?.color;
       const alpha = entry?.alpha ?? 1;
       if (val == null || !color) return;
-      // 後勝ち/上書き。必要ならここで優先ルールを変更
+      // 後勝ち/上書き
       map[val] = { color: `#${color}`, alpha };
     });
     return map;
@@ -450,11 +434,9 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     const rect = mountRef.current.getBoundingClientRect();
     mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    // マウスが動いたことをフラグで記録（パフォーマンス最適化）
     mouseMovedRef.current = true;
 
-    // 左Shiftキーが押されている場合は距離計測を優先（管路ドラッグを無効化）
+    // 左Shiftキーが押されている場合は距離計測を優先
     if (event.shiftKey) {
       return;
     }
@@ -1061,7 +1043,8 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     controlsRef.current = controls;
 
     // Sky コンポーネントの初期化（コンテナを渡す）
-    const skyComponent = new SkyComponent(scene, renderer, mountRef.current);
+    // 断面図生成モードの場合はGUIを非表示
+    const skyComponent = new SkyComponent(scene, renderer, mountRef.current, !enableCrossSectionMode);
     skyComponentRef.current = skyComponent;
 
     // 初期カメラは props.userPositions から設定（App 側でフェッチ済み）
@@ -1756,12 +1739,12 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
             <PipelineInfoDisplay
               selectedObject={selectedObject}
               shapeTypes={shapeTypes}
-              onRegister={handleRegister}
-              onDuplicate={handleDuplicate}
-              onDelete={handleDelete}
-              onAdd={handleAdd}
+              // onRegister={handleRegister}
+              // onDuplicate={handleDuplicate}
+              // onDelete={handleDelete}
+              // onAdd={handleAdd}
               onRestore={handleRestore}
-              onRestoreAll={handleRestoreAll}
+              // onRestoreAll={handleRestoreAll}
             />
           )}
         </div>

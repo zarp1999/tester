@@ -12,6 +12,14 @@ import './CrossSectionView.css';
 function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes }) {
   // 距離計測結果のstate
   const [measurementResult, setMeasurementResult] = useState(null);
+  
+  // 断面自動作成モードのstate
+  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+  
+  // 断面自動作成モードのパラメータ
+  const [angle, setAngle] = useState(90);
+  const [interval, setInterval] = useState(10);
+  const [startPoint, setStartPoint] = useState('始点'); // '始点' or '終点'
 
   // Scene3Dから距離計測結果を受け取るコールバック
   const handleMeasurementUpdate = (result) => {
@@ -38,7 +46,77 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
           {measurementResult && (
             <DistanceMeasurementDisplay measurementResult={measurementResult} />
           )}
+          
+          {/* 断面自動作成モードの設定テーブル */}
+          {autoModeEnabled && (
+            <div className="auto-mode-settings">
+              <table className="auto-mode-table">
+                <thead>
+                  <tr>
+                    <th>入力項目</th>
+                    <th>入力欄</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>角度</td>
+                    <td>
+                      <input
+                        type="number"
+                        value={angle}
+                        onChange={(e) => setAngle(parseFloat(e.target.value) || 90)}
+                        step="0.1"
+                        min="0"
+                        max="180"
+                        placeholder="90"
+                      />
+                      <span className="unit">[deg.]</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>間隔</td>
+                    <td>
+                      <input
+                        type="number"
+                        value={interval}
+                        onChange={(e) => setInterval(parseFloat(e.target.value) || 10)}
+                        step="0.1"
+                        min="0.1"
+                        placeholder="10"
+                      />
+                      <span className="unit">[m]</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>開始点</td>
+                    <td>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={startPoint === '始点'}
+                          onChange={(e) => setStartPoint(e.target.checked ? '始点' : '終点')}
+                        />
+                        <span>{startPoint === '始点' ? '始点' : '終点'}</span>
+                      </label>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* 断面自動作成モードのトグルスイッチ（右上） */}
+      <div className="auto-mode-toggle">
+        <label className="toggle-switch">
+          <input
+            type="checkbox"
+            checked={autoModeEnabled}
+            onChange={(e) => setAutoModeEnabled(e.target.checked)}
+          />
+          <span className="toggle-label">断面自動作成モード</span>
+        </label>
       </div>
 
       {/* 3Dシーン（既存のScene3Dコンポーネントを使用） */}
