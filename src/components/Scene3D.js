@@ -16,7 +16,7 @@ import './Scene3D.css';
  * - キー/マウスによるカメラ操作
  * - 左上: 管路情報、左下: カメラ情報
  */
-function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, onMeasurementUpdate = null }) {
+function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, autoModeEnabled = false, onMeasurementUpdate = null }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -823,8 +823,17 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       const clickedObject = visibleIntersects[0].object;
       const clickPoint = visibleIntersects[0].point; // クリックした位置の3D座標
       if (clickedObject.userData.objectData) {
-        // 断面モードの場合は断面を生成
-        if (enableCrossSectionMode && crossSectionRef.current) {
+        // 断面自動作成モードの場合はアウトライン表示のみ
+        if (autoModeEnabled) {
+          setSelectedObject(clickedObject.userData.objectData);
+          selectedMeshRef.current = clickedObject;
+
+          // アウトライン表示を更新
+          if (outlinePassRef.current) {
+            outlinePassRef.current.selectedObjects = [clickedObject];
+          }
+        } else if (enableCrossSectionMode && crossSectionRef.current) {
+          // 断面モードの場合は断面を生成
           crossSectionRef.current.createCrossSection(clickedObject, clickPoint);
           // デバッグログ削除
         } else {
@@ -1280,13 +1289,13 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     scene.add(additionalLight);
 
     // EffectComposerとOutlinePassの設定
-    // 3Dシーン画面でのみ有効化を試行
+    // 3Dシーン画面または断面自動作成モードで有効化
     let composer = null;
     let outlinePass = null;
 
-    if (!enableCrossSectionMode) {
+    if (!enableCrossSectionMode || autoModeEnabled) {
       try {
-        // 3Dシーン画面でのみEffectComposerを使用
+        // 3Dシーン画面または断面自動作成モードでEffectComposerを使用
         composer = new EffectComposer(renderer);
 
         // 基本レンダリングパス
@@ -1316,8 +1325,6 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
         composer = null;
         outlinePass = null;
       }
-    } else {
-      // デバッグログ削除
     }
 
     composerRef.current = composer;
@@ -1877,6 +1884,49 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       skyComponentRef.current.setBackgroundVisible(showBackground);
     }
   }, [showBackground]);
+
+  // 断面自動作成モードが変更された時にoutlinePassを再初期化
+  useEffect(() => {
+    if (!mountRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+    
+    // 断面自動作成モードが有効な場合のみoutlinePassを初期化
+    if (autoModeEnabled && enableCrossSectionMode) {
+      // outlinePassが存在しない場合のみ作成
+      if (!outlinePassRef.current) {
+        try {
+          const renderer = rendererRef.current;
+          const scene = sceneRef.current;
+          const camera = cameraRef.current;
+          
+          let composer = composerRef.current;
+          if (!composer) {
+            composer = new EffectComposer(renderer);
+            const renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+            composerRef.current = composer;
+          }
+          
+          const outlinePass = new OutlinePass(
+            new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
+            scene,
+            camera
+          );
+          
+          outlinePass.edgeStrength = 3.0;
+          outlinePass.edgeGlow = 0.0;
+          outlinePass.edgeThickness = 1.0;
+          outlinePass.pulsePeriod = 0;
+          outlinePass.visibleEdgeColor.set('#ffff00');
+          outlinePass.hiddenEdgeColor.set('#ffaa00');
+          
+          composer.addPass(outlinePass);
+          outlinePassRef.current = outlinePass;
+        } catch (error) {
+          console.error('Failed to initialize OutlinePass for auto mode:', error);
+        }
+      }
+    }
+  }, [autoModeEnabled, enableCrossSectionMode]);
 
 
   return (

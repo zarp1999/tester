@@ -165,6 +165,7 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
         hideInfoPanel={true}
         hideBackground={true}
         enableCrossSectionMode={true}
+        autoModeEnabled={autoModeEnabled}
         onMeasurementUpdate={handleMeasurementUpdate}
       />
     </div>
