@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import './App.css';
 import Scene3DView from './components/views/Scene3DView';
 import CrossSectionView from './components/views/CrossSectionView';
+import ExtrusionTestView from './components/views/ExtrusionTestView';
 
 /**
  * メインアプリケーションコンポーネント
@@ -114,6 +115,12 @@ function App() {
                   sourceTypes={sourceTypes}
                 />
               } 
+            />
+            
+            {/* 押し出し図形テストビュー */}
+            <Route 
+              path="/extrusion-test" 
+              element={<ExtrusionTestView />} 
             />
           </Routes>
         </div>
