@@ -90,18 +90,54 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
                   <tr>
                     <td>開始点</td>
                     <td>
-                      <label className="checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={startPoint === '始点'}
-                          onChange={(e) => setStartPoint(e.target.checked ? '始点' : '終点')}
-                        />
-                        <span>{startPoint === '始点' ? '始点' : '終点'}</span>
-                      </label>
+                      <div className="radio-group">
+                        <label className="radio-label">
+                          <input
+                            type="radio"
+                            name="startPoint"
+                            value="始点"
+                            checked={startPoint === '始点'}
+                            onChange={(e) => setStartPoint(e.target.value)}
+                          />
+                          <span>始点</span>
+                        </label>
+                        <label className="radio-label">
+                          <input
+                            type="radio"
+                            name="startPoint"
+                            value="終点"
+                            checked={startPoint === '終点'}
+                            onChange={(e) => setStartPoint(e.target.value)}
+                          />
+                          <span>終点</span>
+                        </label>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
               </table>
+              
+              {/* 実行ボタンと断面表示に遷移ボタン */}
+              <div className="auto-mode-buttons">
+                <button 
+                  className="execute-button"
+                  onClick={() => {
+                    console.log('実行:', { angle, interval, startPoint });
+                    // TODO: 実行処理を実装
+                  }}
+                >
+                  実行
+                </button>
+                <button 
+                  className="transition-button"
+                  onClick={() => {
+                    console.log('断面表示に遷移');
+                    // TODO: 断面表示への遷移処理を実装
+                  }}
+                >
+                  断面表示に遷移
+                </button>
+              </div>
             </div>
           )}
         </div>

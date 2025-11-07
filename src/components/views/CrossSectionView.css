@@ -21,6 +21,9 @@
 .cross-section-panel .panel-header {
   margin-bottom: 10px;
   padding-bottom: 5px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .cross-section-panel h3 {
@@ -195,6 +198,9 @@
   margin-top: 15px;
   padding-top: 15px;
   border-top: 1px solid rgba(255, 255, 255, 0.3);
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .auto-mode-table {
@@ -202,6 +208,9 @@
   border-collapse: collapse;
   font-size: 10px;
   color: white;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 
 .auto-mode-table th,
@@ -224,6 +233,10 @@
   border-radius: 3px;
   color: white;
   font-size: 10px;
+  pointer-events: auto;
+  cursor: text;
+  z-index: 1;
+  position: relative;
 }
 
 .auto-mode-table td input[type="number"]:focus {
@@ -253,5 +266,78 @@
 
 .checkbox-label span {
   user-select: none;
+}
+
+/* ラジオボタングループ */
+.radio-group {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.radio-label input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.radio-label span {
+  user-select: none;
+}
+
+/* 実行ボタンと断面表示に遷移ボタン */
+.auto-mode-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.execute-button,
+.transition-button {
+  flex: 1;
+  padding: 8px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: normal;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.execute-button:hover,
+.transition-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.execute-button:active,
+.transition-button:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.execute-button:disabled,
+.transition-button:disabled {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
