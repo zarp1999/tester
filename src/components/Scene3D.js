@@ -40,6 +40,9 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
   // アウトライン表示用のref
   const composerRef = useRef(null);
   const outlinePassRef = useRef(null);
+  
+  // 断面自動作成モードの状態をrefで保持（クリックハンドラーで最新の値を参照するため）
+  const autoModeEnabledRef = useRef(autoModeEnabled);
 
   // ドラッグ機能用のref
   const isDragging = useRef(false);
@@ -823,8 +826,13 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       const clickedObject = visibleIntersects[0].object;
       const clickPoint = visibleIntersects[0].point; // クリックした位置の3D座標
       if (clickedObject.userData.objectData) {
-        // 断面自動作成モードの場合はアウトライン表示のみ
-        if (autoModeEnabled) {
+        // 断面自動作成モードの場合はアウトライン表示のみ（refで最新の値を参照）
+        if (autoModeEnabledRef.current) {
+          // 断面表示を確実にクリア
+          if (crossSectionRef.current) {
+            crossSectionRef.current.clear();
+          }
+          
           setSelectedObject(clickedObject.userData.objectData);
           selectedMeshRef.current = clickedObject;
 
@@ -1885,15 +1893,26 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     }
   }, [showBackground]);
 
+  // 断面自動作成モードの状態をrefに同期
+  useEffect(() => {
+    autoModeEnabledRef.current = autoModeEnabled;
+  }, [autoModeEnabled]);
+
   // 断面自動作成モードが変更された時の処理
   useEffect(() => {
     if (!mountRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
     
     if (autoModeEnabled && enableCrossSectionMode) {
       // 断面自動作成モードが有効になった時
-      // 既存の断面表示（水平線など）をクリア
+      // 既存の断面表示（水平線など）を確実にクリア
       if (crossSectionRef.current) {
         crossSectionRef.current.clear();
+        // クリア後、少し待ってから再度クリア（確実に削除するため）
+        setTimeout(() => {
+          if (crossSectionRef.current) {
+            crossSectionRef.current.clear();
+          }
+        }, 100);
       }
       
       // outlinePassを初期化
