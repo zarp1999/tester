@@ -1885,27 +1885,33 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     }
   }, [showBackground]);
 
-  // 断面自動作成モードが変更された時にoutlinePassを再初期化
+  // 断面自動作成モードが変更された時の処理
   useEffect(() => {
     if (!mountRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
     
-    // 断面自動作成モードが有効な場合のみoutlinePassを初期化
     if (autoModeEnabled && enableCrossSectionMode) {
-      // outlinePassが存在しない場合のみ作成
-      if (!outlinePassRef.current) {
-        try {
-          const renderer = rendererRef.current;
-          const scene = sceneRef.current;
-          const camera = cameraRef.current;
-          
-          let composer = composerRef.current;
-          if (!composer) {
-            composer = new EffectComposer(renderer);
-            const renderPass = new RenderPass(scene, camera);
-            composer.addPass(renderPass);
-            composerRef.current = composer;
-          }
-          
+      // 断面自動作成モードが有効になった時
+      // 既存の断面表示（水平線など）をクリア
+      if (crossSectionRef.current) {
+        crossSectionRef.current.clear();
+      }
+      
+      // outlinePassを初期化
+      try {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+        
+        let composer = composerRef.current;
+        if (!composer) {
+          composer = new EffectComposer(renderer);
+          const renderPass = new RenderPass(scene, camera);
+          composer.addPass(renderPass);
+          composerRef.current = composer;
+        }
+        
+        // outlinePassが存在しない場合は作成
+        if (!outlinePassRef.current) {
           const outlinePass = new OutlinePass(
             new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
             scene,
@@ -1919,11 +1925,33 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
           outlinePass.visibleEdgeColor.set('#ffff00');
           outlinePass.hiddenEdgeColor.set('#ffaa00');
           
-          composer.addPass(outlinePass);
+          // composerにoutlinePassを追加（既に追加されていない場合のみ）
+          // composer.passesにoutlinePassが含まれているかチェック
+          const hasOutlinePass = composer.passes.some(pass => pass instanceof OutlinePass);
+          if (!hasOutlinePass) {
+            composer.addPass(outlinePass);
+          }
+          
           outlinePassRef.current = outlinePass;
-        } catch (error) {
-          console.error('Failed to initialize OutlinePass for auto mode:', error);
+        } else {
+          // 既存のoutlinePassのサイズを更新（setSizeメソッドが存在する場合）
+          if (outlinePassRef.current.setSize) {
+            outlinePassRef.current.setSize(
+              mountRef.current.clientWidth,
+              mountRef.current.clientHeight
+            );
+          }
         }
+      } catch (error) {
+        console.error('Failed to initialize OutlinePass for auto mode:', error);
+      }
+    } else if (!autoModeEnabled && enableCrossSectionMode) {
+      // 断面自動作成モードが無効になった時
+      // outlinePassをクリア（通常の断面モードに戻る）
+      if (outlinePassRef.current && composerRef.current) {
+        // composerからoutlinePassを削除する方法がないため、composerを再作成する必要がある
+        // ただし、これは複雑なので、outlinePassのselectedObjectsをクリアするだけにする
+        outlinePassRef.current.selectedObjects = [];
       }
     }
   }, [autoModeEnabled, enableCrossSectionMode]);
