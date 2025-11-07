@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -16,7 +16,7 @@ import './Scene3D.css';
  * - キー/マウスによるカメラ操作
  * - 左上: 管路情報、左下: カメラ情報
  */
-function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, autoModeEnabled = false, onMeasurementUpdate = null }) {
+const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, autoModeEnabled = false, onMeasurementUpdate = null, onSelectedObjectChange = null, generatedSections = [], sectionViewMode = false, currentSectionIndex = 0 }, ref) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -43,6 +43,9 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
   
   // 断面自動作成モードの状態をrefで保持（クリックハンドラーで最新の値を参照するため）
   const autoModeEnabledRef = useRef(autoModeEnabled);
+
+  // 生成された断面マーカーのref
+  const generatedSectionMarkersRef = useRef([]);
 
   // ドラッグ機能用のref
   const isDragging = useRef(false);
@@ -1898,6 +1901,13 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     autoModeEnabledRef.current = autoModeEnabled;
   }, [autoModeEnabled]);
 
+  // 選択されたオブジェクトの変更を通知
+  useEffect(() => {
+    if (onSelectedObjectChange) {
+      onSelectedObjectChange(selectedObject, selectedMeshRef.current);
+    }
+  }, [selectedObject, onSelectedObjectChange]);
+
   // 断面自動作成モードが変更された時の処理
   useEffect(() => {
     if (!mountRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
@@ -1975,6 +1985,98 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
     }
   }, [autoModeEnabled, enableCrossSectionMode]);
 
+  // 生成された断面を3D空間に描画
+  const drawGeneratedSectionsInScene = (sections) => {
+    if (!sceneRef.current) return;
+
+    // 既存の断面マーカーをクリア
+    if (generatedSectionMarkersRef.current) {
+      generatedSectionMarkersRef.current.forEach(marker => {
+        sceneRef.current.remove(marker);
+        if (marker.geometry) marker.geometry.dispose();
+        if (marker.material) marker.material.dispose();
+      });
+      generatedSectionMarkersRef.current = [];
+    }
+
+    // 各断面の位置にマーカーを描画
+    sections.forEach((section) => {
+      // 断面位置を示す球体マーカー
+      const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x00ff00,
+        emissive: 0x00ff00,
+        emissiveIntensity: 0.5
+      });
+      const marker = new THREE.Mesh(geometry, material);
+      marker.position.copy(section.position);
+      marker.userData.sectionData = section;
+      sceneRef.current.add(marker);
+      generatedSectionMarkersRef.current.push(marker);
+
+      // 断面の法線方向を示す矢印
+      const arrowHelper = new THREE.ArrowHelper(
+        section.normal,
+        section.position,
+        2,
+        0xff0000,
+        0.3,
+        0.2
+      );
+      sceneRef.current.add(arrowHelper);
+      generatedSectionMarkersRef.current.push(arrowHelper);
+    });
+  };
+
+  // generatedSectionsが変更された時に描画
+  useEffect(() => {
+    if (generatedSections && generatedSections.length > 0) {
+      drawGeneratedSectionsInScene(generatedSections);
+    } else {
+      // クリア
+      if (generatedSectionMarkersRef.current) {
+        generatedSectionMarkersRef.current.forEach(marker => {
+          if (sceneRef.current) {
+            sceneRef.current.remove(marker);
+            if (marker.geometry) marker.geometry.dispose();
+            if (marker.material) marker.material.dispose();
+          }
+        });
+        generatedSectionMarkersRef.current = [];
+      }
+    }
+  }, [generatedSections]);
+
+  // 断面表示モードの処理
+  useEffect(() => {
+    if (sectionViewMode && generatedSections && generatedSections.length > 0 && crossSectionRef.current) {
+      const currentSection = generatedSections[currentSectionIndex];
+      if (currentSection) {
+        // 選択された管路を取得
+        const selectedPipe = selectedMeshRef.current;
+        if (selectedPipe && selectedPipe.userData.objectData) {
+          // 断面を生成
+          const clickPoint = new THREE.Vector3(
+            currentSection.position.x,
+            currentSection.position.y,
+            currentSection.z
+          );
+          crossSectionRef.current.clear();
+          crossSectionRef.current.createCrossSection(selectedPipe, clickPoint);
+        }
+      }
+    } else if (!sectionViewMode && crossSectionRef.current) {
+      // 断面表示モードが無効になった時はクリア
+      crossSectionRef.current.clear();
+    }
+  }, [sectionViewMode, currentSectionIndex, generatedSections]);
+
+  // refで公開するメソッド
+  useImperativeHandle(ref, () => ({
+    drawGeneratedSections: (sections) => {
+      drawGeneratedSectionsInScene(sections);
+    }
+  }));
 
   return (
     <div className="scene3d-container">
@@ -2032,7 +2134,7 @@ function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTyp
       )}
     </div>
   );
-}
+});
 
 export default Scene3D;
 

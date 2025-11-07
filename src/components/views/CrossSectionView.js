@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Scene3D from '../Scene3D';
 import { DistanceMeasurementDisplay } from '../DistanceMeasurement';
 import './CrossSectionView.css';
+import * as THREE from 'three';
 
 /**
  * 断面図生成ビュー
@@ -21,9 +22,142 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
   const [interval, setInterval] = useState(10);
   const [startPoint, setStartPoint] = useState('始点'); // '始点' or '終点'
 
+  // 選択された管路の情報
+  const [selectedObject, setSelectedObject] = useState(null);
+  const selectedMeshRef = useRef(null);
+
+  // 生成された断面のリスト
+  const [generatedSections, setGeneratedSections] = useState([]);
+  
+  // 断面表示モードのstate
+  const [sectionViewMode, setSectionViewMode] = useState(false); // false: 3D表示, true: 断面表示
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+
+  // Scene3Dのref
+  const scene3DRef = useRef(null);
+
   // Scene3Dから距離計測結果を受け取るコールバック
   const handleMeasurementUpdate = (result) => {
     setMeasurementResult(result);
+  };
+
+  // Scene3Dから選択されたオブジェクトを受け取るコールバック
+  const handleSelectedObjectChange = (objectData, mesh) => {
+    setSelectedObject(objectData);
+    selectedMeshRef.current = mesh;
+  };
+
+  // 断面自動生成の計算と描画
+  const generateCrossSections = () => {
+    if (!selectedObject || !selectedMeshRef.current) {
+      alert('管路を選択してください');
+      return;
+    }
+
+    const objectData = selectedObject;
+    const geometry = objectData.geometry?.[0];
+    
+    if (!geometry || !geometry.vertices || geometry.vertices.length < 2) {
+      alert('管路の頂点データが不足しています');
+      return;
+    }
+
+    // 管路の半径を取得
+    const getPipeRadius = (objData) => {
+      let radius = (objData.attributes?.radius != null) ? Number(objData.attributes.radius) : 0.3;
+      if (radius > 5) radius = radius / 1000;
+      return Math.max(radius, 0.05);
+    };
+
+    const radius = getPipeRadius(objectData);
+    const vertices = geometry.vertices;
+
+    // 管路の始点と終点を計算
+    const getPipeStartEnd = (startVertex, endVertex, objData, r) => {
+      const hasDepthAttrs = (
+        objData.attributes &&
+        objData.attributes.start_point_depth != null &&
+        objData.attributes.end_point_depth != null &&
+        Number.isFinite(Number(objData.attributes.start_point_depth)) &&
+        Number.isFinite(Number(objData.attributes.end_point_depth))
+      );
+
+      let start, end;
+      if (hasDepthAttrs) {
+        const startDepth = Number(objData.attributes.start_point_depth / 100);
+        const endDepth = Number(objData.attributes.end_point_depth / 100);
+        const startCenterY = startDepth > 0 ? -(startDepth + r) : startDepth;
+        const endCenterY = endDepth > 0 ? -(endDepth + r) : endDepth;
+        start = new THREE.Vector3(startVertex[1], startCenterY, startVertex[0]);
+        end = new THREE.Vector3(endVertex[1], endCenterY, endVertex[0]);
+      } else {
+        start = new THREE.Vector3(startVertex[1], startVertex[2] - r, startVertex[0]);
+        end = new THREE.Vector3(endVertex[1], endVertex[2] - r, endVertex[0]);
+      }
+
+      return { start, end };
+    };
+
+    const { start, end } = getPipeStartEnd(vertices[0], vertices[vertices.length - 1], objectData, radius);
+
+    // 開始点を決定
+    const startPosition = startPoint === '始点' ? start.clone() : end.clone();
+    const endPosition = startPoint === '始点' ? end.clone() : start.clone();
+    
+    // 管路の方向ベクトル
+    const pipeDirection = endPosition.clone().sub(startPosition).normalize();
+    const pipeLength = startPosition.distanceTo(endPosition);
+
+    // 角度をラジアンに変換
+    const angleRad = THREE.MathUtils.degToRad(angle);
+
+    // 断面の位置を計算
+    const sections = [];
+    let currentDistance = 0;
+    let sectionIndex = 1;
+
+    while (currentDistance <= pipeLength) {
+      // 断面の位置（管路に沿った位置）
+      const sectionPosition = startPosition.clone().add(
+        pipeDirection.clone().multiplyScalar(currentDistance)
+      );
+
+      // 断面の法線ベクトル（管路の方向に対して角度を適用）
+      // 管路の方向をY軸として、角度に応じて回転
+      const up = new THREE.Vector3(0, 1, 0);
+      const right = new THREE.Vector3(1, 0, 0);
+      
+      // 管路の方向に垂直な平面を作成
+      const normal = pipeDirection.clone();
+      const tangent = normal.clone().cross(up).normalize();
+      if (tangent.length() < 0.1) {
+        tangent.copy(right).cross(normal).normalize();
+      }
+      const binormal = normal.clone().cross(tangent).normalize();
+
+      // 角度に応じて法線を回転
+      const rotatedNormal = tangent.clone().multiplyScalar(Math.cos(angleRad))
+        .add(binormal.clone().multiplyScalar(Math.sin(angleRad))).normalize();
+
+      sections.push({
+        id: `断面_${String(sectionIndex).padStart(3, '0')}`,
+        position: sectionPosition,
+        normal: rotatedNormal,
+        pipeDirection: pipeDirection,
+        z: sectionPosition.z, // Z座標（断面平面の識別用）
+        index: sectionIndex - 1
+      });
+
+      currentDistance += interval;
+      sectionIndex++;
+    }
+
+    setGeneratedSections(sections);
+    
+    // Scene3Dに断面を描画するよう通知（後で実装）
+    if (scene3DRef.current && scene3DRef.current.drawGeneratedSections) {
+      scene3DRef.current.drawGeneratedSections(sections);
+    }
   };
 
   return (
@@ -121,19 +255,22 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
               <div className="auto-mode-buttons">
                 <button 
                   className="execute-button"
-                  onClick={() => {
-                    console.log('実行:', { angle, interval, startPoint });
-                    // TODO: 実行処理を実装
-                  }}
+                  onClick={generateCrossSections}
+                  disabled={!selectedObject}
                 >
                   実行
                 </button>
                 <button 
                   className="transition-button"
                   onClick={() => {
-                    console.log('断面表示に遷移');
-                    // TODO: 断面表示への遷移処理を実装
+                    if (generatedSections.length === 0) {
+                      alert('先に断面を生成してください');
+                      return;
+                    }
+                    setSectionViewMode(true);
+                    setCurrentSectionIndex(0);
                   }}
+                  disabled={generatedSections.length === 0}
                 >
                   断面表示に遷移
                 </button>
@@ -157,6 +294,7 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
 
       {/* 3Dシーン（既存のScene3Dコンポーネントを使用） */}
       <Scene3D
+        ref={scene3DRef}
         cityJsonData={cityJsonData}
         userPositions={userPositions}
         shapeTypes={shapeTypes}
@@ -167,7 +305,64 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
         enableCrossSectionMode={true}
         autoModeEnabled={autoModeEnabled}
         onMeasurementUpdate={handleMeasurementUpdate}
+        onSelectedObjectChange={handleSelectedObjectChange}
+        generatedSections={generatedSections}
+        sectionViewMode={sectionViewMode}
+        currentSectionIndex={currentSectionIndex}
       />
+
+      {/* 画面下部に断面名のリストを表示 */}
+      {generatedSections.length > 0 && !sectionViewMode && (
+        <div className="section-list">
+          <div className="section-list-title">生成された断面:</div>
+          <div className="section-list-items">
+            {generatedSections.map((section, index) => (
+              <div key={section.id} className="section-list-item">
+                {section.id}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 画面下部に←断面_001→のナビゲーション */}
+      {sectionViewMode && generatedSections.length > 0 && (
+        <div className="section-navigation">
+          <button
+            className="nav-button prev-button"
+            onClick={() => {
+              const prevIndex = currentSectionIndex > 0 
+                ? currentSectionIndex - 1 
+                : generatedSections.length - 1;
+              setCurrentSectionIndex(prevIndex);
+            }}
+          >
+            ←
+          </button>
+          <div className="section-name">
+            {generatedSections[currentSectionIndex]?.id || ''}
+          </div>
+          <button
+            className="nav-button next-button"
+            onClick={() => {
+              const nextIndex = currentSectionIndex < generatedSections.length - 1
+                ? currentSectionIndex + 1
+                : 0;
+              setCurrentSectionIndex(nextIndex);
+            }}
+          >
+            →
+          </button>
+          <button
+            className="nav-button close-button"
+            onClick={() => {
+              setSectionViewMode(false);
+            }}
+          >
+            閉じる
+          </button>
+        </div>
+      )}
     </div>
   );
 }
