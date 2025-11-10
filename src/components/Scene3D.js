@@ -798,16 +798,11 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (!mesh || !sceneRef.current) return;
     
     try {
-      // すべてのオブジェクトのアウトラインを無効化
-      Object.values(objectsRef.current).forEach(obj => {
-        if (obj && obj.userData) {
-          obj.userData.outlineEnabled = false;
-        }
-      });
-      
       // 選択されたオブジェクトのアウトラインを有効化
       if (mesh.userData) {
         mesh.userData.outlineEnabled = true;
+      } else {
+        mesh.userData = { outlineEnabled: true };
       }
     } catch (error) {
       console.error('Failed to set outline:', error);
@@ -817,12 +812,23 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   // アウトライン削除関数
   const clearOutline = () => {
     try {
-      // すべてのオブジェクトのアウトラインを無効化
+      // objectsRef内のオブジェクトのアウトラインを無効化
       Object.values(objectsRef.current).forEach(obj => {
         if (obj && obj.userData) {
           obj.userData.outlineEnabled = false;
         }
       });
+      
+      // シーン内の全てのオブジェクトを再帰的に走査してアウトラインを無効化
+      if (sceneRef.current) {
+        sceneRef.current.traverse((object) => {
+          if (object.userData !== undefined) {
+            object.userData.outlineEnabled = false;
+          } else {
+            object.userData = { outlineEnabled: false };
+          }
+        });
+      }
     } catch (error) {
       console.error('Failed to clear outline:', error);
     }
@@ -1848,6 +1854,31 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     // userPositions が無ければ自動フィット
     if (!userPositions || userPositions.length === 0) {
       fitCameraToObjects();
+    }
+
+    // すべてのオブジェクトのアウトラインを無効化（初期表示時）
+    // objectsRef内のオブジェクト
+    Object.values(objectsRef.current).forEach(obj => {
+      if (obj && obj.userData) {
+        obj.userData.outlineEnabled = false;
+      }
+    });
+    
+    // シーン内の全てのオブジェクトを再帰的に走査してアウトラインを無効化
+    if (sceneRef.current) {
+      sceneRef.current.traverse((object) => {
+        if (object.userData !== undefined) {
+          if (!object.userData.hasOwnProperty('outlineEnabled')) {
+            object.userData.outlineEnabled = false;
+          } else {
+            // 既に設定されている場合でも、falseに設定
+            object.userData.outlineEnabled = false;
+          }
+        } else {
+          // userDataが存在しない場合は作成
+          object.userData = { outlineEnabled: false };
+        }
+      });
     }
   }, [cityJsonData, shapeTypes, layerData, sourceTypes]);
 
