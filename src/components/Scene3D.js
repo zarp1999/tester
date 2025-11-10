@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import { DistanceMeasurement, DistanceMeasurementDisplay } from './DistanceMeasurement';
@@ -34,8 +35,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
 
-  // アウトライン表示用のref（EdgesGeometry方式）
-  const outlineHelperRef = useRef(null);
+  // アウトライン表示用のref（OutlineEffect方式）
+  const outlineEffectRef = useRef(null);
   
   // 断面自動作成モードの状態をrefで保持（クリックハンドラーで最新の値を参照するため）
   const autoModeEnabledRef = useRef(autoModeEnabled);
@@ -453,7 +454,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { objectData: obj, originalColor: colorHex };
+    mesh.userData = { objectData: obj, originalColor: colorHex, outlineEnabled: false };
     mesh.visible = initialVisible;
 
     return mesh;
@@ -789,7 +790,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     }
   };
 
-  // アウトライン表示関数（BoxHelper方式 - 外枠のみ表示）
+  // アウトライン表示関数（OutlineEffect方式）
   const showOutline = (mesh) => {
     // 既存のアウトラインを削除
     clearOutline();
@@ -797,34 +798,33 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (!mesh || !sceneRef.current) return;
     
     try {
-      // BoxHelperを使用（境界ボックスの外枠のみを表示）
-      const boxHelper = new THREE.BoxHelper(mesh, 0xffff00);
+      // すべてのオブジェクトのアウトラインを無効化
+      Object.values(objectsRef.current).forEach(obj => {
+        if (obj && obj.userData) {
+          obj.userData.outlineEnabled = false;
+        }
+      });
       
-      // マテリアルの設定
-      if (boxHelper.material) {
-        boxHelper.material.linewidth = 2;
-        boxHelper.material.depthTest = false;  // 常に前面に表示
-        boxHelper.material.depthWrite = false;
+      // 選択されたオブジェクトのアウトラインを有効化
+      if (mesh.userData) {
+        mesh.userData.outlineEnabled = true;
       }
-      
-      sceneRef.current.add(boxHelper);
-      outlineHelperRef.current = boxHelper;
     } catch (error) {
-      console.error('Failed to create outline:', error);
+      console.error('Failed to set outline:', error);
     }
   };
 
   // アウトライン削除関数
   const clearOutline = () => {
-    if (outlineHelperRef.current && sceneRef.current) {
-      sceneRef.current.remove(outlineHelperRef.current);
-      if (outlineHelperRef.current.geometry) {
-        outlineHelperRef.current.geometry.dispose();
-      }
-      if (outlineHelperRef.current.material) {
-        outlineHelperRef.current.material.dispose();
-      }
-      outlineHelperRef.current = null;
+    try {
+      // すべてのオブジェクトのアウトラインを無効化
+      Object.values(objectsRef.current).forEach(obj => {
+        if (obj && obj.userData) {
+          obj.userData.outlineEnabled = false;
+        }
+      });
+    } catch (error) {
+      console.error('Failed to clear outline:', error);
     }
   };
 
@@ -1227,6 +1227,15 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
+    // OutlineEffectの初期化
+    const outlineEffect = new OutlineEffect(renderer, {
+      defaultThickness: 0.003,  // アウトラインの太さ
+      defaultColor: [1, 1, 0],  // アウトラインの色（RGB、黄色）
+      defaultAlpha: 1.0,        // アウトラインの透明度
+      defaultKeepAlive: false  // 内部マテリアルのキャッシュを保持するかどうか
+    });
+    outlineEffectRef.current = outlineEffect;
+
     // OrbitControlsの初期化
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
@@ -1369,6 +1378,11 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+
+      // OutlineEffectのサイズを更新
+      if (outlineEffectRef.current) {
+        outlineEffectRef.current.setSize(width, height);
+      }
 
       // CrossSectionPlaneのLine2マテリアルのresolutionを更新
       if (crossSectionRef.current) {
@@ -1633,14 +1647,14 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         crossSectionRef.current.update();
       }
 
-      // アウトラインの位置を更新（BoxHelperは自動的にメッシュを追跡）
-      if (outlineHelperRef.current && selectedMeshRef.current && outlineHelperRef.current.update) {
-        outlineHelperRef.current.update();
-      }
-
       // レンダリング（エラーハンドリング付き）
       try {
-        renderer.render(scene, camera);
+        // OutlineEffectを使用してレンダリング
+        if (outlineEffectRef.current) {
+          outlineEffectRef.current.render(scene, camera);
+        } else {
+          renderer.render(scene, camera);
+        }
       } catch (error) {
         console.error('Rendering error:', error);
         // エラー発生時はアニメーションを停止
