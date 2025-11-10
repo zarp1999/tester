@@ -789,38 +789,26 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     }
   };
 
-  // アウトライン表示関数（EdgesGeometry方式）
+  // アウトライン表示関数（BoxHelper方式 - 外枠のみ表示）
   const showOutline = (mesh) => {
     // 既存のアウトラインを削除
     clearOutline();
     
-    if (!mesh || !sceneRef.current || !mesh.geometry) return;
+    if (!mesh || !sceneRef.current) return;
     
     try {
-      // EdgesGeometryでエッジを抽出
-      const edges = new THREE.EdgesGeometry(mesh.geometry);
-      const outlineMaterial = new THREE.LineBasicMaterial({
-        color: 0xffff00,  // 黄色
-        linewidth: 2,
-        depthTest: false,  // 常に前面に表示
-        depthWrite: false
-      });
+      // BoxHelperを使用（境界ボックスの外枠のみを表示）
+      const boxHelper = new THREE.BoxHelper(mesh, 0xffff00);
       
-      const outline = new THREE.LineSegments(edges, outlineMaterial);
-      
-      // 元のメッシュと同じ位置・回転・スケールを適用
-      outline.position.copy(mesh.position);
-      outline.rotation.copy(mesh.rotation);
-      outline.scale.copy(mesh.scale);
-      
-      // メッシュの親オブジェクトがある場合、その変換も考慮
-      if (mesh.parent && mesh.parent !== sceneRef.current) {
-        mesh.parent.updateMatrixWorld();
-        outline.applyMatrix4(mesh.parent.matrixWorld);
+      // マテリアルの設定
+      if (boxHelper.material) {
+        boxHelper.material.linewidth = 2;
+        boxHelper.material.depthTest = false;  // 常に前面に表示
+        boxHelper.material.depthWrite = false;
       }
       
-      sceneRef.current.add(outline);
-      outlineHelperRef.current = outline;
+      sceneRef.current.add(boxHelper);
+      outlineHelperRef.current = boxHelper;
     } catch (error) {
       console.error('Failed to create outline:', error);
     }
@@ -1645,16 +1633,9 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         crossSectionRef.current.update();
       }
 
-      // アウトラインの位置を更新（選択されたメッシュが移動した場合）
-      if (outlineHelperRef.current && selectedMeshRef.current) {
-        const mesh = selectedMeshRef.current;
-        mesh.updateMatrixWorld();
-        
-        // アウトラインの位置・回転・スケールを更新
-        outlineHelperRef.current.position.copy(mesh.position);
-        outlineHelperRef.current.rotation.copy(mesh.rotation);
-        outlineHelperRef.current.scale.copy(mesh.scale);
-        outlineHelperRef.current.updateMatrixWorld();
+      // アウトラインの位置を更新（BoxHelperは自動的にメッシュを追跡）
+      if (outlineHelperRef.current && selectedMeshRef.current && outlineHelperRef.current.update) {
+        outlineHelperRef.current.update();
       }
 
       // レンダリング（エラーハンドリング付き）
