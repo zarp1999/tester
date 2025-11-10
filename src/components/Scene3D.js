@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import { DistanceMeasurement, DistanceMeasurementDisplay } from './DistanceMeasurement';
@@ -35,8 +34,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
 
-  // アウトライン表示用のref（OutlineEffect方式）
-  const outlineEffectRef = useRef(null);
+  // アウトライン表示用のref（EdgesGeometry方式）
+  const outlineHelperRef = useRef(null);
   
   // 断面自動作成モードの状態をrefで保持（クリックハンドラーで最新の値を参照するため）
   const autoModeEnabledRef = useRef(autoModeEnabled);
@@ -454,7 +453,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { objectData: obj, originalColor: colorHex, outlineEnabled: false };
+    mesh.userData = { objectData: obj, originalColor: colorHex };
     mesh.visible = initialVisible;
 
     return mesh;
@@ -790,47 +789,54 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     }
   };
 
-  // アウトライン表示関数（OutlineEffect方式）
+  // アウトライン表示関数（EdgesGeometry方式）
   const showOutline = (mesh) => {
     // 既存のアウトラインを削除
     clearOutline();
     
-    if (!mesh || !sceneRef.current) return;
+    if (!mesh || !sceneRef.current || !mesh.geometry) return;
     
     try {
-      // 選択されたオブジェクトのアウトラインを有効化
-      if (mesh.userData) {
-        mesh.userData.outlineEnabled = true;
-      } else {
-        mesh.userData = { outlineEnabled: true };
+      // EdgesGeometryでエッジを抽出（閾値角度を大きくして外枠のみ）
+      const edges = new THREE.EdgesGeometry(mesh.geometry, Math.PI * 0.9);
+      const outlineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,  // 黄色
+        linewidth: 2,
+        depthTest: false,  // 常に前面に表示
+        depthWrite: false
+      });
+      
+      const outline = new THREE.LineSegments(edges, outlineMaterial);
+      
+      // 元のメッシュと同じ位置・回転・スケールを適用
+      outline.position.copy(mesh.position);
+      outline.rotation.copy(mesh.rotation);
+      outline.scale.copy(mesh.scale);
+      
+      // メッシュの親オブジェクトがある場合、その変換も考慮
+      if (mesh.parent && mesh.parent !== sceneRef.current) {
+        mesh.parent.updateMatrixWorld();
+        outline.applyMatrix4(mesh.parent.matrixWorld);
       }
+      
+      sceneRef.current.add(outline);
+      outlineHelperRef.current = outline;
     } catch (error) {
-      console.error('Failed to set outline:', error);
+      console.error('Failed to create outline:', error);
     }
   };
 
   // アウトライン削除関数
   const clearOutline = () => {
-    try {
-      // objectsRef内のオブジェクトのアウトラインを無効化
-      Object.values(objectsRef.current).forEach(obj => {
-        if (obj && obj.userData) {
-          obj.userData.outlineEnabled = false;
-        }
-      });
-      
-      // シーン内の全てのオブジェクトを再帰的に走査してアウトラインを無効化
-      if (sceneRef.current) {
-        sceneRef.current.traverse((object) => {
-          if (object.userData !== undefined) {
-            object.userData.outlineEnabled = false;
-          } else {
-            object.userData = { outlineEnabled: false };
-          }
-        });
+    if (outlineHelperRef.current && sceneRef.current) {
+      sceneRef.current.remove(outlineHelperRef.current);
+      if (outlineHelperRef.current.geometry) {
+        outlineHelperRef.current.geometry.dispose();
       }
-    } catch (error) {
-      console.error('Failed to clear outline:', error);
+      if (outlineHelperRef.current.material) {
+        outlineHelperRef.current.material.dispose();
+      }
+      outlineHelperRef.current = null;
     }
   };
 
@@ -1233,15 +1239,6 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // OutlineEffectの初期化
-    const outlineEffect = new OutlineEffect(renderer, {
-      defaultThickness: 0.003,  // アウトラインの太さ
-      defaultColor: [1, 1, 0],  // アウトラインの色（RGB、黄色）
-      defaultAlpha: 1.0,        // アウトラインの透明度
-      defaultKeepAlive: false  // 内部マテリアルのキャッシュを保持するかどうか
-    });
-    outlineEffectRef.current = outlineEffect;
-
     // OrbitControlsの初期化
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
@@ -1384,11 +1381,6 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
-
-      // OutlineEffectのサイズを更新
-      if (outlineEffectRef.current) {
-        outlineEffectRef.current.setSize(width, height);
-      }
 
       // CrossSectionPlaneのLine2マテリアルのresolutionを更新
       if (crossSectionRef.current) {
@@ -1653,14 +1645,21 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         crossSectionRef.current.update();
       }
 
+      // アウトラインの位置を更新（選択されたメッシュが移動した場合）
+      if (outlineHelperRef.current && selectedMeshRef.current) {
+        const mesh = selectedMeshRef.current;
+        mesh.updateMatrixWorld();
+        
+        // アウトラインの位置・回転・スケールを更新
+        outlineHelperRef.current.position.copy(mesh.position);
+        outlineHelperRef.current.rotation.copy(mesh.rotation);
+        outlineHelperRef.current.scale.copy(mesh.scale);
+        outlineHelperRef.current.updateMatrixWorld();
+      }
+
       // レンダリング（エラーハンドリング付き）
       try {
-        // OutlineEffectを使用してレンダリング
-        if (outlineEffectRef.current) {
-          outlineEffectRef.current.render(scene, camera);
-        } else {
-          renderer.render(scene, camera);
-        }
+        renderer.render(scene, camera);
       } catch (error) {
         console.error('Rendering error:', error);
         // エラー発生時はアニメーションを停止
@@ -1854,31 +1853,6 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     // userPositions が無ければ自動フィット
     if (!userPositions || userPositions.length === 0) {
       fitCameraToObjects();
-    }
-
-    // すべてのオブジェクトのアウトラインを無効化（初期表示時）
-    // objectsRef内のオブジェクト
-    Object.values(objectsRef.current).forEach(obj => {
-      if (obj && obj.userData) {
-        obj.userData.outlineEnabled = false;
-      }
-    });
-    
-    // シーン内の全てのオブジェクトを再帰的に走査してアウトラインを無効化
-    if (sceneRef.current) {
-      sceneRef.current.traverse((object) => {
-        if (object.userData !== undefined) {
-          if (!object.userData.hasOwnProperty('outlineEnabled')) {
-            object.userData.outlineEnabled = false;
-          } else {
-            // 既に設定されている場合でも、falseに設定
-            object.userData.outlineEnabled = false;
-          }
-        } else {
-          // userDataが存在しない場合は作成
-          object.userData = { outlineEnabled: false };
-        }
-      });
     }
   }, [cityJsonData, shapeTypes, layerData, sourceTypes]);
 
