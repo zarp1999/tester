@@ -108,9 +108,6 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
     const pipeDirection = endPosition.clone().sub(startPosition).normalize();
     const pipeLength = startPosition.distanceTo(endPosition);
 
-    // 角度をラジアンに変換
-    const angleRad = THREE.MathUtils.degToRad(angle);
-
     // 断面の位置を計算
     const sections = [];
     let currentDistance = 0;
@@ -122,28 +119,15 @@ function CrossSectionView({ cityJsonData, userPositions, shapeTypes, layerData, 
         pipeDirection.clone().multiplyScalar(currentDistance)
       );
 
-      // 断面の法線ベクトル（管路の方向に対して角度を適用）
-      // 管路の方向をY軸として、角度に応じて回転
-      const up = new THREE.Vector3(0, 1, 0);
-      const right = new THREE.Vector3(1, 0, 0);
-      
-      // 管路の方向に垂直な平面を作成
+      // 断面の法線ベクトル（管路の方向に垂直）
       const normal = pipeDirection.clone();
-      const tangent = normal.clone().cross(up).normalize();
-      if (tangent.length() < 0.1) {
-        tangent.copy(right).cross(normal).normalize();
-      }
-      const binormal = normal.clone().cross(tangent).normalize();
-
-      // 角度に応じて法線を回転
-      const rotatedNormal = tangent.clone().multiplyScalar(Math.cos(angleRad))
-        .add(binormal.clone().multiplyScalar(Math.sin(angleRad))).normalize();
 
       sections.push({
         id: `断面_${String(sectionIndex).padStart(3, '0')}`,
         position: sectionPosition,
-        normal: rotatedNormal,
+        normal: normal,
         pipeDirection: pipeDirection,
+        angle: angle, // グリッド線の方向を変える角度（度）
         z: sectionPosition.z, // Z座標（断面平面の識別用）
         index: sectionIndex - 1
       });

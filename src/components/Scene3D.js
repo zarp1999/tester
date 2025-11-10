@@ -1956,18 +1956,6 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       marker.userData.sectionData = section;
       sceneRef.current.add(marker);
       generatedSectionMarkersRef.current.push(marker);
-
-      // 断面の法線方向を示す矢印
-      const arrowHelper = new THREE.ArrowHelper(
-        section.normal,
-        section.position,
-        2,
-        0xff0000,
-        0.3,
-        0.2
-      );
-      sceneRef.current.add(arrowHelper);
-      generatedSectionMarkersRef.current.push(arrowHelper);
     });
   };
 
@@ -2004,8 +1992,10 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
             currentSection.position.y,
             currentSection.z
           );
+          // グリッド線の角度を渡す
+          const gridAngle = currentSection.angle || 0;
           crossSectionRef.current.clear();
-          crossSectionRef.current.createCrossSection(selectedPipe, clickPoint);
+          crossSectionRef.current.createCrossSection(selectedPipe, clickPoint, gridAngle);
         }
       }
     } else if (!sectionViewMode && crossSectionRef.current) {

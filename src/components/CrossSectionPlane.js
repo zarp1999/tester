@@ -27,18 +27,23 @@ class CrossSectionPlane {
     
     // 断面描画情報を一時的に保存する配列
     this.pendingCrossSections = []; // {center, radius, axisDirection, color, pipeObject, crossSectionZ}
+    
+    // グリッド線の角度（度、デフォルト: 0）
+    this.gridAngle = 0;
   }
 
   /**
    * 管路をクリックして断面を生成
    * @param {THREE.Object3D} pipeObject - クリックされた管路オブジェクト
    * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標
+   * @param {number} gridAngle - グリッド線の方向を変える角度（度、デフォルト: 0）
    */
-  createCrossSection(pipeObject, clickPoint) {
+  createCrossSection(pipeObject, clickPoint, gridAngle = 0) {
     // 生成前に既存の表示を全クリア
     this.clear();
     
     this.pendingCrossSections = [];
+    this.gridAngle = gridAngle || 0; // グリッド線の角度を保存
     
     if (!pipeObject || !pipeObject.userData || !pipeObject.userData.objectData) {
       return;
@@ -165,7 +170,7 @@ class CrossSectionPlane {
   }
 
   /**
-   * 東西方向（X軸方向）の線を描画
+   * 東西方向（X軸方向）の線を描画（角度に応じて回転）
    * @param {number} depth - 深さ（Y座標）
    * @param {THREE.Vector3} center - 中心位置
    * @param {number} color - 線の色（16進数）
@@ -173,10 +178,24 @@ class CrossSectionPlane {
    * @param {boolean} showLabel - ラベルを表示するか
    */
   drawEastWestLine(depth, center, color, highlight = false, showLabel = true) {
-    // 水平方向(X軸)の基準グリッド線
+    // グリッド線の角度（度からラジアンに変換）
+    const gridAngle = this.gridAngle || 0;
+    const angleRad = THREE.MathUtils.degToRad(gridAngle);
+    
+    // 水平方向(X軸)の基準グリッド線の長さ
     const lineLength = 1000;
-    const startPoint = new THREE.Vector3(center.x - lineLength / 2, depth, center.z);
-    const endPoint = new THREE.Vector3(center.x + lineLength / 2, depth, center.z);
+    
+    // 角度に応じて線の方向を回転
+    const direction = new THREE.Vector3(
+      Math.cos(angleRad),
+      0,
+      Math.sin(angleRad)
+    ).normalize();
+    
+    // 中心点から両方向に線を延ばす
+    const halfLength = lineLength / 2;
+    const startPoint = center.clone().add(direction.clone().multiplyScalar(-halfLength));
+    const endPoint = center.clone().add(direction.clone().multiplyScalar(halfLength));
     
     const lineGeometry = new LineGeometry();
     lineGeometry.setPositions([
