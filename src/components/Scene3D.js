@@ -1,9 +1,6 @@
 import React, { useRef, useEffect, useState, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
 import { DistanceMeasurement, DistanceMeasurementDisplay } from './DistanceMeasurement';
@@ -37,9 +34,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
 
-  // アウトライン表示用のref
-  const composerRef = useRef(null);
-  const outlinePassRef = useRef(null);
+  // アウトライン表示用のref（EdgesGeometry方式）
+  const outlineHelperRef = useRef(null);
   
   // 断面自動作成モードの状態をrefで保持（クリックハンドラーで最新の値を参照するため）
   const autoModeEnabledRef = useRef(autoModeEnabled);
@@ -793,6 +789,57 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     }
   };
 
+  // アウトライン表示関数（EdgesGeometry方式）
+  const showOutline = (mesh) => {
+    // 既存のアウトラインを削除
+    clearOutline();
+    
+    if (!mesh || !sceneRef.current || !mesh.geometry) return;
+    
+    try {
+      // EdgesGeometryでエッジを抽出
+      const edges = new THREE.EdgesGeometry(mesh.geometry);
+      const outlineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,  // 黄色
+        linewidth: 2,
+        depthTest: false,  // 常に前面に表示
+        depthWrite: false
+      });
+      
+      const outline = new THREE.LineSegments(edges, outlineMaterial);
+      
+      // 元のメッシュと同じ位置・回転・スケールを適用
+      outline.position.copy(mesh.position);
+      outline.rotation.copy(mesh.rotation);
+      outline.scale.copy(mesh.scale);
+      
+      // メッシュの親オブジェクトがある場合、その変換も考慮
+      if (mesh.parent && mesh.parent !== sceneRef.current) {
+        mesh.parent.updateMatrixWorld();
+        outline.applyMatrix4(mesh.parent.matrixWorld);
+      }
+      
+      sceneRef.current.add(outline);
+      outlineHelperRef.current = outline;
+    } catch (error) {
+      console.error('Failed to create outline:', error);
+    }
+  };
+
+  // アウトライン削除関数
+  const clearOutline = () => {
+    if (outlineHelperRef.current && sceneRef.current) {
+      sceneRef.current.remove(outlineHelperRef.current);
+      if (outlineHelperRef.current.geometry) {
+        outlineHelperRef.current.geometry.dispose();
+      }
+      if (outlineHelperRef.current.material) {
+        outlineHelperRef.current.material.dispose();
+      }
+      outlineHelperRef.current = null;
+    }
+  };
+
   // クリックハンドラー
   const handleClick = (event) => {
     // 左Shiftキーが押されている場合は距離計測を優先（管路選択を無効化）
@@ -840,9 +887,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           selectedMeshRef.current = clickedObject;
 
           // アウトライン表示を更新
-          if (outlinePassRef.current) {
-            outlinePassRef.current.selectedObjects = [clickedObject];
-          }
+          showOutline(clickedObject);
         } else if (enableCrossSectionMode && crossSectionRef.current) {
           // 断面モードの場合は断面を生成
           crossSectionRef.current.createCrossSection(clickedObject, clickPoint);
@@ -853,9 +898,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           selectedMeshRef.current = clickedObject;
 
           // アウトライン表示を更新
-          if (outlinePassRef.current) {
-            outlinePassRef.current.selectedObjects = [clickedObject];
-          }
+          showOutline(clickedObject);
         }
       }
     } else {
@@ -951,9 +994,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         selectedMeshRef.current = newMesh;
 
         // アウトライン表示を更新
-        if (outlinePassRef.current) {
-          outlinePassRef.current.selectedObjects = [newMesh];
-        }
+        showOutline(newMesh);
 
         setSelectedObject(newObjectData);
       }
@@ -989,9 +1030,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       setSelectedObject(null);
 
       // アウトラインをクリア
-      if (outlinePassRef.current) {
-        outlinePassRef.current.selectedObjects = [];
-      }
+      clearOutline();
     }
   };
 
@@ -1299,47 +1338,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     additionalLight.position.set(-1, -1, 1);
     scene.add(additionalLight);
 
-    // EffectComposerとOutlinePassの設定
-    // 3Dシーン画面または断面自動作成モードで有効化
-    let composer = null;
-    let outlinePass = null;
-
-    if (!enableCrossSectionMode || autoModeEnabled) {
-      try {
-        // 3Dシーン画面または断面自動作成モードでEffectComposerを使用
-        composer = new EffectComposer(renderer);
-
-        // 基本レンダリングパス
-        const renderPass = new RenderPass(scene, camera);
-        composer.addPass(renderPass);
-
-        // アウトラインパス（最小限の設定）
-        outlinePass = new OutlinePass(
-          new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
-          scene,
-          camera
-        );
-
-        // シンプルなアウトライン設定
-        outlinePass.edgeStrength = 3.0;
-        outlinePass.edgeGlow = 0.0; // 発光なし
-        outlinePass.edgeThickness = 1.0;
-        outlinePass.pulsePeriod = 0;
-        outlinePass.visibleEdgeColor.set('#ffff00');
-        outlinePass.hiddenEdgeColor.set('#ffaa00');
-
-        composer.addPass(outlinePass);
-
-        // デバッグログ削除
-      } catch (error) {
-        console.error('Failed to initialize EffectComposer:', error);
-        composer = null;
-        outlinePass = null;
-      }
-    }
-
-    composerRef.current = composer;
-    outlinePassRef.current = outlinePass;
+    // EffectComposerとOutlinePassは使用しない（EdgesGeometry方式を使用）
 
     // 断面図の初期化（断面モードが有効な場合）
     if (enableCrossSectionMode) {
@@ -1382,11 +1381,6 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
-
-      // Composerが有効な場合のみリサイズ
-      if (composerRef.current) {
-        composerRef.current.setSize(width, height);
-      }
 
       // CrossSectionPlaneのLine2マテリアルのresolutionを更新
       if (crossSectionRef.current) {
@@ -1541,9 +1535,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           setSelectedObject(null);
           selectedMeshRef.current = null;
           // アウトラインをクリア
-          if (outlinePassRef.current) {
-            outlinePassRef.current.selectedObjects = [];
-          }
+          clearOutline();
         }
         keysPressed.current['escape'] = false;
       }
@@ -1653,14 +1645,21 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         crossSectionRef.current.update();
       }
 
+      // アウトラインの位置を更新（選択されたメッシュが移動した場合）
+      if (outlineHelperRef.current && selectedMeshRef.current) {
+        const mesh = selectedMeshRef.current;
+        mesh.updateMatrixWorld();
+        
+        // アウトラインの位置・回転・スケールを更新
+        outlineHelperRef.current.position.copy(mesh.position);
+        outlineHelperRef.current.rotation.copy(mesh.rotation);
+        outlineHelperRef.current.scale.copy(mesh.scale);
+        outlineHelperRef.current.updateMatrixWorld();
+      }
+
       // レンダリング（エラーハンドリング付き）
       try {
-        if (composerRef.current) {
-          composerRef.current.render();
-        } else {
-          // Composerが無効な場合は直接レンダラーを使用
-          renderer.render(scene, camera);
-        }
+        renderer.render(scene, camera);
       } catch (error) {
         console.error('Rendering error:', error);
         // エラー発生時はアニメーションを停止
@@ -1719,13 +1718,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         controlsRef.current.dispose();
       }
 
-      // コンポーザーのクリーンアップ
-      if (composerRef.current) {
-        composerRef.current = null;
-      }
-      if (outlinePassRef.current) {
-        outlinePassRef.current = null;
-      }
+      // アウトラインのクリーンアップ
+      clearOutline();
 
       // シーン内のすべてのオブジェクトをクリーンアップ
       if (scene) {
@@ -1925,63 +1919,12 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         }, 100);
       }
       
-      // outlinePassを初期化
-      try {
-        const renderer = rendererRef.current;
-        const scene = sceneRef.current;
-        const camera = cameraRef.current;
-        
-        let composer = composerRef.current;
-        if (!composer) {
-          composer = new EffectComposer(renderer);
-          const renderPass = new RenderPass(scene, camera);
-          composer.addPass(renderPass);
-          composerRef.current = composer;
-        }
-        
-        // outlinePassが存在しない場合は作成
-        if (!outlinePassRef.current) {
-          const outlinePass = new OutlinePass(
-            new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
-            scene,
-            camera
-          );
-          
-          outlinePass.edgeStrength = 3.0;
-          outlinePass.edgeGlow = 0.0;
-          outlinePass.edgeThickness = 1.0;
-          outlinePass.pulsePeriod = 0;
-          outlinePass.visibleEdgeColor.set('#ffff00');
-          outlinePass.hiddenEdgeColor.set('#ffaa00');
-          
-          // composerにoutlinePassを追加（既に追加されていない場合のみ）
-          // composer.passesにoutlinePassが含まれているかチェック
-          const hasOutlinePass = composer.passes.some(pass => pass instanceof OutlinePass);
-          if (!hasOutlinePass) {
-            composer.addPass(outlinePass);
-          }
-          
-          outlinePassRef.current = outlinePass;
-        } else {
-          // 既存のoutlinePassのサイズを更新（setSizeメソッドが存在する場合）
-          if (outlinePassRef.current.setSize) {
-            outlinePassRef.current.setSize(
-              mountRef.current.clientWidth,
-              mountRef.current.clientHeight
-            );
-          }
-        }
-      } catch (error) {
-        console.error('Failed to initialize OutlinePass for auto mode:', error);
-      }
+      // アウトラインをクリア（EdgesGeometry方式を使用するため、特別な初期化は不要）
+      clearOutline();
     } else if (!autoModeEnabled && enableCrossSectionMode) {
       // 断面自動作成モードが無効になった時
-      // outlinePassをクリア（通常の断面モードに戻る）
-      if (outlinePassRef.current && composerRef.current) {
-        // composerからoutlinePassを削除する方法がないため、composerを再作成する必要がある
-        // ただし、これは複雑なので、outlinePassのselectedObjectsをクリアするだけにする
-        outlinePassRef.current.selectedObjects = [];
-      }
+      // アウトラインをクリア（通常の断面モードに戻る）
+      clearOutline();
     }
   }, [autoModeEnabled, enableCrossSectionMode]);
 
