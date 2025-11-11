@@ -888,6 +888,33 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
           // アウトライン表示を更新
           showOutline(clickedObject);
+          
+          // 生成された断面マーカーから、クリック位置に最も近い断面の位置を使用して断面を生成
+          if (generatedSections && generatedSections.length > 0 && crossSectionRef.current) {
+            // クリック位置に最も近い断面を探す
+            let closestSection = null;
+            let minDistance = Infinity;
+            
+            generatedSections.forEach(section => {
+              const sectionPos = new THREE.Vector3(section.position.x, section.position.y, section.z);
+              const distance = clickPoint.distanceTo(sectionPos);
+              if (distance < minDistance) {
+                minDistance = distance;
+                closestSection = section;
+              }
+            });
+            
+            if (closestSection) {
+              // 断面マーカーの位置を使用して断面を生成
+              const sectionClickPoint = new THREE.Vector3(
+                closestSection.position.x,
+                closestSection.position.y,
+                closestSection.z
+              );
+              const gridAngle = closestSection.angle || 0;
+              crossSectionRef.current.createCrossSection(clickedObject, sectionClickPoint, gridAngle);
+            }
+          }
         } else if (enableCrossSectionMode && crossSectionRef.current) {
           // 断面モードの場合は断面を生成
           crossSectionRef.current.createCrossSection(clickedObject, clickPoint);
