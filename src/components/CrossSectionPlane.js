@@ -128,13 +128,6 @@ class CrossSectionPlane {
     const gridAngle = this.gridAngle || 0;
     const angleRad = THREE.MathUtils.degToRad(gridAngle);
     
-    // グリッド線の方向ベクトル（水平面内）
-    const gridDirection = new THREE.Vector3(
-      Math.cos(angleRad),
-      0,
-      Math.sin(angleRad)
-    ).normalize();
-    
     // グリッド線に垂直な方向ベクトル（縦線を配置する方向）
     const perpendicularDirection = new THREE.Vector3(
       -Math.sin(angleRad),
@@ -186,17 +179,10 @@ class CrossSectionPlane {
                 // グリッド線の中心点から管路へのベクトル
                 const toPipe = pipePos2D.clone().sub(this.gridCenter);
                 
-                // グリッド線の方向への投影（グリッド線上の最も近い点を見つける）
-                const gridProjection = toPipe.dot(gridDirection);
-                const closestGridPoint = this.gridCenter.clone().add(gridDirection.clone().multiplyScalar(gridProjection));
-                
-                // 管路の位置からグリッド線上の最も近い点へのベクトル
-                const toClosestGridPoint = closestGridPoint.clone().sub(pipePos2D);
-                
-                // このベクトルをグリッド線に垂直な方向に投影（縦線の位置を決定）
-                // 管路の位置から、グリッド線に垂直な方向に移動して、グリッド線と交差する位置を見つける
-                const perpendicularProjection = toClosestGridPoint.dot(perpendicularDirection);
-                const pipePosition = pipePos2D.clone().add(perpendicularDirection.clone().multiplyScalar(perpendicularProjection));
+                // このベクトルをグリッド線に垂直な方向に投影
+                // 投影した距離だけ、管路の位置からグリッド線に垂直な方向に移動した位置が縦線の位置
+                const perpendicularProjection = toPipe.dot(perpendicularDirection);
+                const pipePosition = this.gridCenter.clone().add(perpendicularDirection.clone().multiplyScalar(perpendicularProjection));
                 pipePosition.y = 0; // Y座標は0（床の位置）
                 
                 // 床(Y=0)から管路上端までの縦線を描画
