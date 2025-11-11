@@ -30,6 +30,8 @@ class CrossSectionPlane {
     
     // グリッド線の角度（度、デフォルト: 0）
     this.gridAngle = 0;
+    // グリッド線の中心点（縦線の配置基準）
+    this.gridCenter = null;
   }
 
   /**
@@ -88,6 +90,9 @@ class CrossSectionPlane {
     const maxDepth = -50; // グリッド描画の下限(m)
     const linePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
     
+    // グリッド線の中心点を保存（縦線の配置基準として使用）
+    this.gridCenter = linePosition.clone();
+    
     for (let depth = 0; depth >= maxDepth; depth -= 1) {
       this.drawEastWestLine(depth, linePosition, 0x888888, false);
     }
@@ -119,6 +124,24 @@ class CrossSectionPlane {
       return;
     }
     
+    // グリッド線の角度を取得
+    const gridAngle = this.gridAngle || 0;
+    const angleRad = THREE.MathUtils.degToRad(gridAngle);
+    
+    // グリッド線の方向ベクトル（水平面内）
+    const gridDirection = new THREE.Vector3(
+      Math.cos(angleRad),
+      0,
+      Math.sin(angleRad)
+    ).normalize();
+    
+    // グリッド線に垂直な方向ベクトル（縦線を配置する方向）
+    const perpendicularDirection = new THREE.Vector3(
+      -Math.sin(angleRad),
+      0,
+      Math.cos(angleRad)
+    ).normalize();
+    
     const allObjects = Object.values(this.objectsRef.current);
     
     allObjects.forEach(obj => {
@@ -149,10 +172,28 @@ class CrossSectionPlane {
             
             if (t >= 0 && t <= 1) {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
-              const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
               
-              // 床(Y=0)から管路上端までの縦線を描画
-              this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
+              // グリッド線と交差する位置に縦線を配置
+              // グリッド線の中心点（drawClickedPipeCrossSectionで設定されたgridCenter）を基準に、
+              // 管路の位置をグリッド線に垂直な方向に投影して縦線の位置を決定
+              if (!this.gridCenter) {
+                // gridCenterが設定されていない場合は、管路の位置をそのまま使用
+                const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
+                this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
+              } else {
+                // 管路の位置（X, Z座標）
+                const pipePos2D = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
+                
+                // グリッド線の中心点から管路へのベクトル
+                const toPipe = pipePos2D.clone().sub(this.gridCenter);
+                // グリッド線に垂直な方向への投影
+                const projection = toPipe.dot(perpendicularDirection);
+                const pipePosition = this.gridCenter.clone().add(perpendicularDirection.clone().multiplyScalar(projection));
+                pipePosition.y = 0; // Y座標は0（床の位置）
+                
+                // 床(Y=0)から管路上端までの縦線を描画
+                this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
+              }
               
               this.pendingCrossSections.push({
                 center: intersectionPoint,
@@ -196,6 +237,10 @@ class CrossSectionPlane {
     const halfLength = lineLength / 2;
     const startPoint = center.clone().add(direction.clone().multiplyScalar(-halfLength));
     const endPoint = center.clone().add(direction.clone().multiplyScalar(halfLength));
+    
+    // Y座標をdepthに設定（gridAngle追加時に失われた処理を復元）
+    startPoint.y = depth;
+    endPoint.y = depth;
     
     const lineGeometry = new LineGeometry();
     lineGeometry.setPositions([
@@ -448,6 +493,9 @@ class CrossSectionPlane {
       });
     });
     this.crossSections = [];
+    
+    // グリッド線の中心点をリセット
+    this.gridCenter = null;
   }
 
   /**
