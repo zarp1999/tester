@@ -174,21 +174,29 @@ class CrossSectionPlane {
               const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
               
               // グリッド線と交差する位置に縦線を配置
-              // グリッド線の中心点（drawClickedPipeCrossSectionで設定されたgridCenter）を基準に、
-              // 管路の位置をグリッド線に垂直な方向に投影して縦線の位置を決定
+              // 管路の位置から、グリッド線に垂直な方向に投影して縦線の位置を決定
               if (!this.gridCenter) {
                 // gridCenterが設定されていない場合は、管路の位置をそのまま使用
                 const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
                 this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
               } else {
-                // 管路の位置（X, Z座標）
+                // 管路の位置（X, Z座標、Y=0）
                 const pipePos2D = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
                 
                 // グリッド線の中心点から管路へのベクトル
                 const toPipe = pipePos2D.clone().sub(this.gridCenter);
-                // グリッド線に垂直な方向への投影
-                const projection = toPipe.dot(perpendicularDirection);
-                const pipePosition = this.gridCenter.clone().add(perpendicularDirection.clone().multiplyScalar(projection));
+                
+                // グリッド線の方向への投影（グリッド線上の最も近い点を見つける）
+                const gridProjection = toPipe.dot(gridDirection);
+                const closestGridPoint = this.gridCenter.clone().add(gridDirection.clone().multiplyScalar(gridProjection));
+                
+                // 管路の位置からグリッド線上の最も近い点へのベクトル
+                const toClosestGridPoint = closestGridPoint.clone().sub(pipePos2D);
+                
+                // このベクトルをグリッド線に垂直な方向に投影（縦線の位置を決定）
+                // 管路の位置から、グリッド線に垂直な方向に移動して、グリッド線と交差する位置を見つける
+                const perpendicularProjection = toClosestGridPoint.dot(perpendicularDirection);
+                const pipePosition = pipePos2D.clone().add(perpendicularDirection.clone().multiplyScalar(perpendicularProjection));
                 pipePosition.y = 0; // Y座標は0（床の位置）
                 
                 // 床(Y=0)から管路上端までの縦線を描画
