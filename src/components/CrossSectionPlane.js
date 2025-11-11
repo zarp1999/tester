@@ -40,12 +40,15 @@ class CrossSectionPlane {
    * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標
    * @param {number} gridAngle - グリッド線の方向を変える角度（度、デフォルト: 0）
    */
-  createCrossSection(pipeObject, clickPoint, gridAngle = 0) {
+  createCrossSection(pipeObject, clickPoint, gridAngle = undefined) {
     // 生成前に既存の表示を全クリア
     this.clear();
     
     this.pendingCrossSections = [];
-    this.gridAngle = gridAngle || 0; // グリッド線の角度を保存
+    // gridAngleが明示的に渡された場合のみ更新、そうでなければ前回の値を保持
+    if (gridAngle !== undefined) {
+      this.gridAngle = gridAngle;
+    }
     
     if (!pipeObject || !pipeObject.userData || !pipeObject.userData.objectData) {
       return;
@@ -128,6 +131,13 @@ class CrossSectionPlane {
     const gridAngle = this.gridAngle || 0;
     const angleRad = THREE.MathUtils.degToRad(gridAngle);
     
+    // グリッド線の方向ベクトル（水平面内）
+    const gridDirection = new THREE.Vector3(
+      Math.cos(angleRad),
+      0,
+      Math.sin(angleRad)
+    ).normalize();
+    
     // グリッド線に垂直な方向ベクトル（縦線を配置する方向）
     const perpendicularDirection = new THREE.Vector3(
       -Math.sin(angleRad),
@@ -180,7 +190,7 @@ class CrossSectionPlane {
                 const toPipe = pipePos2D.clone().sub(this.gridCenter);
                 
                 // このベクトルをグリッド線に垂直な方向に投影
-                // 投影した距離だけ、管路の位置からグリッド線に垂直な方向に移動した位置が縦線の位置
+                // 投影した距離だけ、グリッド線の中心点からグリッド線に垂直な方向に移動した位置が縦線の位置
                 const perpendicularProjection = toPipe.dot(perpendicularDirection);
                 const pipePosition = this.gridCenter.clone().add(perpendicularDirection.clone().multiplyScalar(perpendicularProjection));
                 pipePosition.y = 0; // Y座標は0（床の位置）
