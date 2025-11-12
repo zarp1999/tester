@@ -101,7 +101,7 @@ class CrossSectionPlane {
     // グリッド線の角度を考慮して断面平面を定義
     if (this.gridAngle !== 0) {
       // グリッド線が回転している場合、グリッド線に垂直な平面で交差判定
-      this.drawVerticalLinesAtRotatedPlane(clickPoint, pipeObject);
+      this.drawVerticalLinesAtRotatedPlane(clickPoint, null);
     } else {
       // 角度0度の場合は従来の処理
       this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, null);
@@ -141,9 +141,6 @@ class CrossSectionPlane {
     ).normalize();
     // 断面平面の法線ベクトル（グリッド線に垂直、左側方向）
     const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
-    
-    // グリッド線はY=0の平面上にあるため、断面平面もY=0を通る点を使用
-    // clickPointをY=0に投影した点を断面平面の基準点とする
     const planePoint = new THREE.Vector3(clickPoint.x, 0, clickPoint.z);
     
     const allObjects = Object.values(this.objectsRef.current);
@@ -165,37 +162,15 @@ class CrossSectionPlane {
         const vertices = geometry.vertices;
         const { start, end } = this.getPipeStartEnd(vertices[0], vertices[vertices.length - 1], objectData, radius);
         
-        const direction = new THREE.Vector3().subVectors(end, start);
-        const directionNormalized = direction.clone().normalize();
+        const direction = end.clone().sub(start);
+        const numberator = planeNormal.dot(planePoint.clone().sub(start));
+        const denominator = planeNormal.dot(direction);
         
-        // 管路の中心線と断面平面の交点を求める
-        // 管路の中心線: start + t * direction (0 <= t <= 1)
-        // 断面平面: (point - planePoint) · planeNormal = 0
-        // t = -((start - planePoint) · planeNormal) / (direction · planeNormal)
-        const startToPlanePoint = start.clone().sub(planePoint);
-        const dot1 = startToPlanePoint.dot(planeNormal);
-        const dot2 = directionNormalized.dot(planeNormal);
-        
-        if (Math.abs(dot2) > 0.001) {
-          const t = -dot1 / dot2;
-          
-          // 管路の範囲内かどうかをチェック（通常の場合と同様）
-          // t >= 0 && t <= 1 で管路の中心線範囲を確認
+        if (Math.abs(denominator) > 1e-6) {
+          const t = numberator / denominator;
           if (t >= 0 && t <= 1) {
             const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
-            
-            // 交点のX, Z座標をグリッド線上に投影
-            // グリッド線はlinePositionを通り、gridDirectionに沿って延びている
-            // グリッド線上の点: linePosition + s * gridDirection
-            // 交点のX, Z座標からlinePositionへのベクトルをgridDirectionに投影
-            const intersectionXZ = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
-            const linePositionXZ = new THREE.Vector3(planePoint.x, 0, planePoint.z);
-            const toIntersection = intersectionXZ.clone().sub(linePositionXZ);
-            const projectionScalar = toIntersection.dot(gridDirection);
-            const projectedPoint = linePositionXZ.clone().add(gridDirection.clone().multiplyScalar(projectionScalar));
-            
-            // 投影した位置に縦線を描画
-            const pipePosition = new THREE.Vector3(projectedPoint.x, 0, projectedPoint.z);
+            const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
             
             // 床(Y=0)から管路上端までの縦線を描画
             this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
@@ -203,7 +178,7 @@ class CrossSectionPlane {
             this.pendingCrossSections.push({
               center: intersectionPoint,
               radius: radius,
-              axisDirection: directionNormalized,
+              axisDirection: direction.clone().normalize(),
               color: obj.material.color,
               pipeObject: obj,
               crossSectionZ: intersectionPoint.z
@@ -490,7 +465,14 @@ class CrossSectionPlane {
     
     if (pipeObject && crossSectionZ !== null) {
       try {
-        this.drawCSGCrossSection(pipeObject, crossSectionZ, color);
+        // グリッド線の角度を考慮してCSG断面を描画
+        if (this.gridAngle !== 0) {
+          // 回転した断面平面の場合
+          this.drawCSGCrossSectionRotated(pipeObject, center, color);
+        } else {
+          // 角度0度の場合（従来の処理）
+          this.drawCSGCrossSection(pipeObject, crossSectionZ, color);
+        }
       } catch (error) {
         console.error('CSG断面の作成に失敗しました:', error);
       }
@@ -498,7 +480,7 @@ class CrossSectionPlane {
   }
 
   /**
-   * CSGを使用して垂直面で切断した断面を描画
+   * CSGを使用して垂直面で切断した断面を描画（角度0度用）
    * @param {THREE.Object3D} pipeObject - 管路オブジェクト
    * @param {number} crossSectionZ - 断面平面のZ座標
    * @param {THREE.Color} color - 断面の色
@@ -521,6 +503,72 @@ class CrossSectionPlane {
     const planeGeometry = new THREE.BoxGeometry(1000, 1000, 0.01);
     const planeMesh = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
     planeMesh.position.set(0, 0, crossSectionZ);
+    planeMesh.updateMatrix();
+    
+    const intersectionMesh = CSG.intersect(pipeMesh, planeMesh);
+    intersectionMesh.material = new THREE.MeshBasicMaterial({
+      color: color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8
+    });
+    intersectionMesh.visible = this.showCrossSections;
+    
+    this.crossSections.push(intersectionMesh);
+    this.scene.add(intersectionMesh);
+  }
+
+  /**
+   * CSGを使用して回転した垂直面で切断した断面を描画（回転した断面平面用）
+   * @param {THREE.Object3D} pipeObject - 管路オブジェクト
+   * @param {THREE.Vector3} planePoint - 断面平面を通る点（グリッド線上の点）
+   * @param {THREE.Color} color - 断面の色
+   */
+  drawCSGCrossSectionRotated(pipeObject, planePoint, color) {
+    // 元メッシュを複製し、薄いボックスとの交差(Intersect)で断面メッシュを得る
+    if (!pipeObject.geometry) {
+      return;
+    }
+    
+    const pipeMesh = new THREE.Mesh(
+      pipeObject.geometry.clone(),
+      new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide })
+    );
+    pipeMesh.position.copy(pipeObject.position);
+    pipeMesh.rotation.copy(pipeObject.rotation);
+    pipeMesh.scale.copy(pipeObject.scale);
+    pipeMesh.updateMatrix();
+    
+    // グリッド線の角度から断面平面の法線ベクトルを計算
+    const gridAngle = this.gridAngle || 0;
+    const angleRad = THREE.MathUtils.degToRad(gridAngle);
+    // グリッド線の方向ベクトル
+    const gridDirection = new THREE.Vector3(
+      Math.cos(angleRad),
+      0,
+      Math.sin(angleRad)
+    ).normalize();
+    // 断面平面の法線ベクトル（グリッド線に垂直）
+    const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
+    
+    // 断面平面を表す薄いボックスを作成
+    // 平面の法線ベクトルに垂直な方向に薄いボックスを配置
+    const planeGeometry = new THREE.BoxGeometry(1000, 1000, 0.01);
+    const planeMesh = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    
+    // 平面の位置と向きを設定
+    // planePointを通り、planeNormalに垂直な平面
+    // 平面の法線ベクトルがplaneNormalになるように回転
+    planeMesh.position.set(planePoint.x, planePoint.y, planePoint.z);
+    
+    // 平面の向きを設定（法線ベクトルに基づいて回転）
+    // BoxGeometryのデフォルトの法線はY軸方向（0, 1, 0）
+    // planeNormalがY軸方向になるように回転
+    const defaultNormal = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(defaultNormal, planeNormal);
+    planeMesh.quaternion.copy(quaternion);
+    
     planeMesh.updateMatrix();
     
     const intersectionMesh = CSG.intersect(pipeMesh, planeMesh);

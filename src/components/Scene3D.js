@@ -111,17 +111,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     // 色スタイルを決定
     const style = getPipeColorStyle(obj, styleMap, sourceTypeMap, materialValStyleMap, pipeKindValStyleMap);
-    // テストデータ用の色マッピング（cross_section_typeがある場合）
-    let colorHex = style?.color || '#888888';
-    if (!style && obj.attributes?.cross_section_type) {
-      const testColorMap = {
-        'circle': '#ff0000',      // 赤
-        'ellipse': '#00ff00',     // 緑
-        'rectangle': '#0000ff',   // 青
-        'polygon': '#ffff00'      // 黄
-      };
-      colorHex = testColorMap[obj.attributes.cross_section_type] || '#888888';
-    }
+    const colorHex = style?.color || '#888888';
     const opacity = style?.alpha ?? 1;
     // material 値と layer_panel.json の val を比較して初期表示を決定
     const initialVisible = (() => {
@@ -134,150 +124,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       return true;
     })();
 
-    // 押し出し図形の処理（Extrusionタイプでcross_section_typeが指定されている場合）
-    const crossSectionType = obj.attributes?.cross_section_type;
-    const isExtrusionType = (shapeTypeName === 'Extrusion' || shapeTypeName === 'Spline') && 
-                            crossSectionType && 
-                            Array.isArray(geom.vertices) && 
-                            geom.vertices.length >= 2;
-    
-    if (isExtrusionType) {
-      // 断面形状作成関数
-      const createCircleShape = (radius) => {
-        const shape = new THREE.Shape();
-        shape.absarc(0, 0, radius, 0, Math.PI * 2, false);
-        return shape;
-      };
-
-      const createEllipseShape = (radiusX, radiusY) => {
-        const shape = new THREE.Shape();
-        shape.absellipse(0, 0, radiusX, radiusY, 0, Math.PI * 2, false, 0);
-        return shape;
-      };
-
-      const createRectangleShape = (width, height) => {
-        const shape = new THREE.Shape();
-        shape.moveTo(-width / 2, -height / 2);
-        shape.lineTo(width / 2, -height / 2);
-        shape.lineTo(width / 2, height / 2);
-        shape.lineTo(-width / 2, height / 2);
-        shape.lineTo(-width / 2, -height / 2);
-        return shape;
-      };
-
-      const createPolygonShape = (sides = 6, radius = 1) => {
-        const shape = new THREE.Shape();
-        const vertices = [];
-        for (let i = 0; i < sides; i++) {
-          const angle = (i / sides) * Math.PI * 2;
-          vertices.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
-        }
-        shape.moveTo(vertices[0][0], vertices[0][1]);
-        for (let i = 1; i < vertices.length; i++) {
-          shape.lineTo(vertices[i][0], vertices[i][1]);
-        }
-        shape.lineTo(vertices[0][0], vertices[0][1]);
-        return shape;
-      };
-
-      // 断面形状を作成
-      let shape;
-      switch (crossSectionType) {
-        case 'circle':
-          let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
-          if (radius > 5) radius = radius / 1000;
-          radius = Math.max(radius, 0.05);
-          shape = createCircleShape(radius);
-          break;
-        case 'ellipse':
-          let radiusX = (obj.attributes?.radius_x != null) ? Number(obj.attributes.radius_x) : 0.5;
-          let radiusY = (obj.attributes?.radius_y != null) ? Number(obj.attributes.radius_y) : 0.3;
-          if (radiusX > 5) radiusX = radiusX / 1000;
-          if (radiusY > 5) radiusY = radiusY / 1000;
-          radiusX = Math.max(radiusX, 0.05);
-          radiusY = Math.max(radiusY, 0.05);
-          shape = createEllipseShape(radiusX, radiusY);
-          break;
-        case 'rectangle':
-          let width = (obj.attributes?.width != null) ? Number(obj.attributes.width) : 0.8;
-          let height = (obj.attributes?.height != null) ? Number(obj.attributes.height) : 0.6;
-          if (width > 5) width = width / 1000;
-          if (height > 5) height = height / 1000;
-          width = Math.max(width, 0.05);
-          height = Math.max(height, 0.05);
-          shape = createRectangleShape(width, height);
-          break;
-        case 'polygon':
-          const sides = (obj.attributes?.sides != null) ? Number(obj.attributes.sides) : 6;
-          let polyRadius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.4;
-          if (polyRadius > 5) polyRadius = polyRadius / 1000;
-          polyRadius = Math.max(polyRadius, 0.05);
-          shape = createPolygonShape(sides, polyRadius);
-          break;
-        default:
-          // デフォルトは円形
-          let defaultRadius = 0.3;
-          shape = createCircleShape(defaultRadius);
-      }
-
-      // パスを作成（verticesから3D曲線を作成）
-      const hasDepthAttrs = (
-        obj.attributes &&
-        obj.attributes.start_point_depth != null &&
-        obj.attributes.end_point_depth != null &&
-        Number.isFinite(Number(obj.attributes.start_point_depth)) &&
-        Number.isFinite(Number(obj.attributes.end_point_depth))
-      );
-
-      // 断面形状の最大サイズを計算（Y座標計算用）
-      let maxShapeSize = 0.3;
-      if (crossSectionType === 'circle' || crossSectionType === 'polygon') {
-        maxShapeSize = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
-        if (maxShapeSize > 5) maxShapeSize = maxShapeSize / 1000;
-      } else if (crossSectionType === 'ellipse') {
-        const rx = (obj.attributes?.radius_x != null) ? Number(obj.attributes.radius_x) : 0.5;
-        const ry = (obj.attributes?.radius_y != null) ? Number(obj.attributes.radius_y) : 0.3;
-        maxShapeSize = Math.max(rx, ry);
-        if (maxShapeSize > 5) maxShapeSize = maxShapeSize / 1000;
-      } else if (crossSectionType === 'rectangle') {
-        const w = (obj.attributes?.width != null) ? Number(obj.attributes.width) : 0.8;
-        const h = (obj.attributes?.height != null) ? Number(obj.attributes.height) : 0.6;
-        maxShapeSize = Math.max(w, h) / 2;
-        if (maxShapeSize > 5) maxShapeSize = maxShapeSize / 1000;
-      }
-      maxShapeSize = Math.max(maxShapeSize, 0.05);
-
-      // 頂点をThree.js座標系に変換
-      const pathPoints = geom.vertices.map((vertex, index) => {
-        // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
-        let y;
-        if (hasDepthAttrs) {
-          // 各頂点の深さを補間（始点と終点の深さから線形補間）
-          const startDepth = Number(obj.attributes.start_point_depth / 100);
-          const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const t = index / Math.max(geom.vertices.length - 1, 1);
-          const depth = startDepth + (endDepth - startDepth) * t;
-          y = depth >= 0 ? -(depth + maxShapeSize) : depth;
-        } else {
-          y = vertex[2] + maxShapeSize;
-        }
-        return new THREE.Vector3(vertex[1], y, vertex[0]);
-      });
-
-      // パスタイプに応じて曲線を作成
-      const isSpline = geom.type === 'Spline';
-      const path = new THREE.CatmullRomCurve3(pathPoints, isSpline);
-
-      // 押し出し図形を作成
-      const extrudeSettings = {
-        steps: 100,
-        bevelEnabled: false,
-        extrudePath: path
-      };
-      geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    }
     // LineString系の処理を統合（Cylinder + LineString と LineString）
-    else if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
+    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
       if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
         // 始点と終点を使用してCylinderGeometryを作成
         const start = geom.vertices[0];
@@ -333,15 +181,9 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           break;
         case 'MultiLineString':
         case 'Arc':
-          // 簡易表示
-          geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-          break;
         case 'Spline':
-          // Splineは上記のExtrusion処理で処理される可能性があるため、
-          // cross_section_typeがない場合のみ簡易表示
-          if (!crossSectionType) {
-            geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-          }
+        // 簡易表示
+          geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
           break;
         case 'Circle':
           geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
@@ -383,27 +225,19 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       })
       : new THREE.MeshStandardMaterial({
         color: colorHex,
-        metalness: obj.attributes?.cross_section_type ? 0.3 : 0.6,  // 押し出し図形は金属感を下げる
+        metalness: 0.6,
         roughness: 0.4,
         transparent: opacity < 1,
         opacity,
-        side: THREE.DoubleSide,  // 両面描画で見やすく
 
-        // 押し出し図形には少し自己発光を追加して見やすく
-        emissive: obj.attributes?.cross_section_type ? new THREE.Color(colorHex).multiplyScalar(0.2) : new THREE.Color(0x000000),
-        emissiveIntensity: obj.attributes?.cross_section_type ? 0.2 : 0
+        emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
+        emissiveIntensity: 0.05
       });
 
     const mesh = new THREE.Mesh(geometry, material);
 
-    // 位置設定：押し出し図形の処理
-    if (isExtrusionType) {
-      // ExtrudeGeometryは既にパスに沿って形状が作成されているため、
-      // 追加の位置設定や回転は不要（パスが既に適切な位置に配置されている）
-      // メッシュは原点に配置されるが、パス自体が正しい座標に配置されている
-    }
     // 位置設定：LineString系の統合処理
-    else if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
+    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
       if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
         // LineString系の位置設定
         const start = geom.vertices[0];
@@ -798,7 +632,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     
     try {
       // EdgesGeometryでエッジを抽出（閾値角度を大きくして外枠のみ）
-      const edges = new THREE.EdgesGeometry(mesh.geometry, Math.PI * 0.9);
+      const edges = new THREE.EdgesGeometry(mesh.geometry, 85);
       const outlineMaterial = new THREE.LineBasicMaterial({
         color: 0xffff00,  // 黄色
         linewidth: 2,
@@ -1897,11 +1731,12 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         );
 
         if (isPipe) {
-          mesh.visible = showPipes && mesh.userData.initialVisible !== false;
+          // 断面表示モードの場合は管路を非表示にする
+          mesh.visible = !sectionViewMode && showPipes && mesh.userData.initialVisible !== false;
         }
       }
     });
-  }, [showPipes]);
+  }, [showPipes, sectionViewMode]);
 
   // 地表面表示制御
   useEffect(() => {
