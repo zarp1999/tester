@@ -142,6 +142,10 @@ class CrossSectionPlane {
     // 断面平面の法線ベクトル（グリッド線に垂直、左側方向）
     const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
     
+    // グリッド線はY=0の平面上にあるため、断面平面もY=0を通る点を使用
+    // clickPointをY=0に投影した点を断面平面の基準点とする
+    const planePoint = new THREE.Vector3(clickPoint.x, 0, clickPoint.z);
+    
     const allObjects = Object.values(this.objectsRef.current);
     
     allObjects.forEach(obj => {
@@ -166,18 +170,32 @@ class CrossSectionPlane {
         
         // 管路の中心線と断面平面の交点を求める
         // 管路の中心線: start + t * direction (0 <= t <= 1)
-        // 断面平面: (point - clickPoint) · planeNormal = 0
-        // t = -((start - clickPoint) · planeNormal) / (direction · planeNormal)
-        const startToClickPoint = start.clone().sub(clickPoint);
-        const dot1 = startToClickPoint.dot(planeNormal);
+        // 断面平面: (point - planePoint) · planeNormal = 0
+        // t = -((start - planePoint) · planeNormal) / (direction · planeNormal)
+        const startToPlanePoint = start.clone().sub(planePoint);
+        const dot1 = startToPlanePoint.dot(planeNormal);
         const dot2 = directionNormalized.dot(planeNormal);
         
         if (Math.abs(dot2) > 0.001) {
           const t = -dot1 / dot2;
           
+          // 管路の範囲内かどうかをチェック（通常の場合と同様）
+          // t >= 0 && t <= 1 で管路の中心線範囲を確認
           if (t >= 0 && t <= 1) {
             const intersectionPoint = start.clone().add(direction.clone().multiplyScalar(t));
-            const pipePosition = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
+            
+            // 交点のX, Z座標をグリッド線上に投影
+            // グリッド線はlinePositionを通り、gridDirectionに沿って延びている
+            // グリッド線上の点: linePosition + s * gridDirection
+            // 交点のX, Z座標からlinePositionへのベクトルをgridDirectionに投影
+            const intersectionXZ = new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
+            const linePositionXZ = new THREE.Vector3(planePoint.x, 0, planePoint.z);
+            const toIntersection = intersectionXZ.clone().sub(linePositionXZ);
+            const projectionScalar = toIntersection.dot(gridDirection);
+            const projectedPoint = linePositionXZ.clone().add(gridDirection.clone().multiplyScalar(projectionScalar));
+            
+            // 投影した位置に縦線を描画
+            const pipePosition = new THREE.Vector3(projectedPoint.x, 0, projectedPoint.z);
             
             // 床(Y=0)から管路上端までの縦線を描画
             this.drawVerticalLine(pipePosition, intersectionPoint.y, obj.material.color, radius);
