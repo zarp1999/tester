@@ -562,9 +562,9 @@ class CrossSectionPlane {
     planeMesh.position.set(planePoint.x, planePoint.y, planePoint.z);
     
     // 平面の向きを設定（法線ベクトルに基づいて回転）
-    // BoxGeometryのデフォルトの法線はY軸方向（0, 1, 0）
-    // planeNormalがY軸方向になるように回転
-    const defaultNormal = new THREE.Vector3(0, 1, 0);
+    // BoxGeometryのデフォルトの法線はZ軸方向（0, 0, 1）
+    // planeNormalがZ軸方向になるように回転
+    const defaultNormal = new THREE.Vector3(0, 0, 1);
     const quaternion = new THREE.Quaternion();
     quaternion.setFromUnitVectors(defaultNormal, planeNormal);
     planeMesh.quaternion.copy(quaternion);

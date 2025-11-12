@@ -1858,11 +1858,42 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           const gridAngle = currentSection.angle || 0;
           crossSectionRef.current.clear();
           crossSectionRef.current.createCrossSection(selectedPipe, clickPoint, gridAngle);
+          // 断面表示モードでは断面を表示する
+          crossSectionRef.current.toggleCrossSections(true);
+          
+          // カメラを断面平面に正対させる
+          if (cameraRef.current && controlsRef.current) {
+            // グリッド線の角度から断面平面の法線ベクトルを計算
+            const angleRad = THREE.MathUtils.degToRad(gridAngle);
+            // グリッド線の方向ベクトル
+            const gridDirection = new THREE.Vector3(
+              Math.cos(angleRad),
+              0,
+              Math.sin(angleRad)
+            ).normalize();
+            // 断面平面の法線ベクトル（グリッド線に垂直）
+            const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
+            
+            // カメラの位置を断面平面から適当な距離に配置（法線ベクトルの方向に）
+            const cameraDistance = 50; // グリッド線からの距離
+            const planePoint = new THREE.Vector3(clickPoint.x, 0, clickPoint.z);
+            const cameraPosition = planePoint.clone().add(planeNormal.clone().multiplyScalar(cameraDistance));
+            // カメラの高さを適当に設定（断面が見えるように）
+            cameraPosition.y = 20;
+            
+            cameraRef.current.position.copy(cameraPosition);
+            // カメラを断面平面の中心に向ける
+            cameraRef.current.lookAt(planePoint);
+            controlsRef.current.target.copy(planePoint);
+            controlsRef.current.update();
+          }
         }
       }
     } else if (!sectionViewMode && crossSectionRef.current) {
       // 断面表示モードが無効になった時はクリア
       crossSectionRef.current.clear();
+      // 断面も非表示にする
+      crossSectionRef.current.toggleCrossSections(false);
     }
   }, [sectionViewMode, currentSectionIndex, generatedSections]);
 
