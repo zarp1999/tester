@@ -749,7 +749,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
                 closestSection.z
               );
               const gridAngle = closestSection.angle || 0;
-              crossSectionRef.current.createCrossSection(clickedObject, sectionClickPoint, gridAngle);
+              crossSectionRef.current.createCrossSection(clickedObject, sectionClickPoint, gridAngle, true);
             }
           }
         } else if (enableCrossSectionMode && crossSectionRef.current) {
@@ -1929,7 +1929,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           // グリッド線の角度を渡す
           const gridAngle = currentSection.angle || 0;
           crossSectionRef.current.clear();
-          crossSectionRef.current.createCrossSection(selectedPipe, clickPoint, gridAngle);
+          crossSectionRef.current.createCrossSection(selectedPipe, clickPoint, gridAngle, true);
           // 断面表示モードでは断面を表示する
           crossSectionRef.current.toggleCrossSections(true);
           

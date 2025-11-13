@@ -37,13 +37,15 @@ class CrossSectionPlane {
    * @param {THREE.Object3D} pipeObject - クリックされた管路オブジェクト
    * @param {THREE.Vector3} clickPoint - クリックした位置の3D座標
    * @param {number} gridAngle - グリッド線の方向を変える角度（度、デフォルト: 0）
+   * @param {boolean} autoModeEnabled - 自動生成モードかどうか（デフォルト: false）
    */
-  createCrossSection(pipeObject, clickPoint, gridAngle = 0) {
+  createCrossSection(pipeObject, clickPoint, gridAngle = 0, autoModeEnabled = false) {
     // 生成前に既存の表示を全クリア
     this.clear();
     
     this.pendingCrossSections = [];
     this.gridAngle = gridAngle || 0; // グリッド線の角度を保存
+    this.autoModeEnabled = autoModeEnabled; // 自動生成モードの状態を保存
     
     if (!pipeObject || !pipeObject.userData || !pipeObject.userData.objectData) {
       return;
@@ -87,8 +89,7 @@ class CrossSectionPlane {
     
     const maxDepth = -50; // グリッド描画の下限(m)
     // 断面自動生成モードの場合はclickPointを直接使用、通常のクリックの場合はintersectionPointを使用
-    // gridAngleが0以外の場合は自動生成モードと判断
-    const useClickPoint = this.gridAngle !== 0;
+    const useClickPoint = this.autoModeEnabled;
     const linePosition = useClickPoint 
       ? new THREE.Vector3(clickPoint.x, 0, clickPoint.z)
       : new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
@@ -99,11 +100,11 @@ class CrossSectionPlane {
     
     // 断面平面で交差するすべての管路に縦線を描画
     // グリッド線の角度を考慮して断面平面を定義
-    if (this.gridAngle !== 0) {
-      // グリッド線が回転している場合、グリッド線に垂直な平面で交差判定
+    if (this.autoModeEnabled) {
+      // 自動生成モードの場合、グリッド線に垂直な平面で交差判定
       this.drawVerticalLinesAtRotatedPlane(clickPoint, null);
     } else {
-      // 角度0度の場合は従来の処理
+      // 通常モードの場合は従来の処理
       this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, null);
     }
     
@@ -133,14 +134,14 @@ class CrossSectionPlane {
     // グリッド線の角度から断面平面の法線ベクトルを計算
     const gridAngle = this.gridAngle || 0;
     const angleRad = THREE.MathUtils.degToRad(gridAngle);
-    // 断面平面の法線ベクトル（角度で直接指定）
-    const planeNormal = new THREE.Vector3(
-      Math.cos(angleRad),
+    // グリッド線の方向ベクトル
+    const gridDirection = new THREE.Vector3(
+      Math.sin(angleRad),
       0,
-      Math.sin(angleRad)
+      Math.cos(angleRad)
     ).normalize();
-    // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
-    const gridDirection = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
+    // 断面平面の法線ベクトル（グリッド線に垂直、左側方向）
+    const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
     const planePoint = new THREE.Vector3(clickPoint.x, 0, clickPoint.z);
     
     const allObjects = Object.values(this.objectsRef.current);
@@ -266,14 +267,12 @@ class CrossSectionPlane {
     // 水平方向(X軸)の基準グリッド線の長さ
     const lineLength = 1000;
     
-    // 断面平面の法線ベクトル（角度で直接指定）
-    const planeNormal = new THREE.Vector3(
-      Math.cos(angleRad),
+    // 角度に応じて線の方向を回転
+    const direction = new THREE.Vector3(
+      Math.sin(angleRad),
       0,
-      Math.sin(angleRad)
+      Math.cos(angleRad)
     ).normalize();
-    // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
-    const direction = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
     
     // 中心点から両方向に線を延ばす
     const halfLength = lineLength / 2;
@@ -308,16 +307,12 @@ class CrossSectionPlane {
     if (shouldShowLabel) {
       const labelPosition = new THREE.Vector3(center.x, depth, center.z);
       
-      // グリッド線が回転している場合（角度0度以外）のみ、回転に合わせて位置を調整
-      if (this.gridAngle !== 0) {
-        // グリッド線の方向ベクトルを90度回転させて垂直ベクトルを取得
-        // const perpendicular = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
-        // const labelOffset = 0; // ラベルのオフセット距離（左側に配置）
-        // labelPosition.add(perpendicular.clone().multiplyScalar(labelOffset));
+      // 自動生成モードまたはグリッド線が回転している場合、回転に合わせて位置を調整
+      if (this.autoModeEnabled || this.gridAngle !== 0) {
         // 回転している場合は、drawDepthLabelのxOffsetを0にする
         this.drawDepthLabel(depth, labelPosition, highlight ? color : 0xffffff, 0);
       } else {
-        // 角度0度の場合は、修正前のコード（drawDepthLabelのxOffsetに任せる）
+        // 通常モードで角度0度の場合は、修正前のコード（drawDepthLabelのxOffsetに任せる）
         this.drawDepthLabel(depth, labelPosition, highlight ? color : 0xffffff);
       }
     }
@@ -468,11 +463,11 @@ class CrossSectionPlane {
     if (pipeObject && crossSectionZ !== null) {
       try {
         // グリッド線の角度を考慮してCSG断面を描画
-        if (this.gridAngle !== 0) {
-          // 回転した断面平面の場合
+        if (this.autoModeEnabled || this.gridAngle !== 0) {
+          // 自動生成モードまたは回転した断面平面の場合
           this.drawCSGCrossSectionRotated(pipeObject, center, color);
         } else {
-          // 角度0度の場合（従来の処理）
+          // 通常モードで角度0度の場合（従来の処理）
           this.drawCSGCrossSection(pipeObject, crossSectionZ, color);
         }
       } catch (error) {
@@ -544,14 +539,14 @@ class CrossSectionPlane {
     // グリッド線の角度から断面平面の法線ベクトルを計算
     const gridAngle = this.gridAngle || 0;
     const angleRad = THREE.MathUtils.degToRad(gridAngle);
-    // 断面平面の法線ベクトル（角度で直接指定）
-    const planeNormal = new THREE.Vector3(
-      Math.cos(angleRad),
+    // グリッド線の方向ベクトル
+    const gridDirection = new THREE.Vector3(
+      Math.sin(angleRad),
       0,
-      Math.sin(angleRad)
+      Math.cos(angleRad)
     ).normalize();
-    // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
-    const gridDirection = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
+    // 断面平面の法線ベクトル（グリッド線に垂直）
+    const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
     
     // 断面平面を表す薄いボックスを作成
     // 平面の法線ベクトルに垂直な方向に薄いボックスを配置
