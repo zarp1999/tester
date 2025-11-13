@@ -133,14 +133,14 @@ class CrossSectionPlane {
     // グリッド線の角度から断面平面の法線ベクトルを計算
     const gridAngle = this.gridAngle || 0;
     const angleRad = THREE.MathUtils.degToRad(gridAngle);
-    // グリッド線の方向ベクトル
-    const gridDirection = new THREE.Vector3(
+    // 断面平面の法線ベクトル（角度で直接指定）
+    const planeNormal = new THREE.Vector3(
       Math.cos(angleRad),
       0,
       Math.sin(angleRad)
     ).normalize();
-    // 断面平面の法線ベクトル（グリッド線に垂直、左側方向）
-    const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
+    // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
+    const gridDirection = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
     const planePoint = new THREE.Vector3(clickPoint.x, 0, clickPoint.z);
     
     const allObjects = Object.values(this.objectsRef.current);
@@ -266,12 +266,14 @@ class CrossSectionPlane {
     // 水平方向(X軸)の基準グリッド線の長さ
     const lineLength = 1000;
     
-    // 角度に応じて線の方向を回転
-    const direction = new THREE.Vector3(
+    // 断面平面の法線ベクトル（角度で直接指定）
+    const planeNormal = new THREE.Vector3(
       Math.cos(angleRad),
       0,
       Math.sin(angleRad)
     ).normalize();
+    // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
+    const direction = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
     
     // 中心点から両方向に線を延ばす
     const halfLength = lineLength / 2;
@@ -542,14 +544,14 @@ class CrossSectionPlane {
     // グリッド線の角度から断面平面の法線ベクトルを計算
     const gridAngle = this.gridAngle || 0;
     const angleRad = THREE.MathUtils.degToRad(gridAngle);
-    // グリッド線の方向ベクトル
-    const gridDirection = new THREE.Vector3(
+    // 断面平面の法線ベクトル（角度で直接指定）
+    const planeNormal = new THREE.Vector3(
       Math.cos(angleRad),
       0,
       Math.sin(angleRad)
     ).normalize();
-    // 断面平面の法線ベクトル（グリッド線に垂直）
-    const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
+    // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
+    const gridDirection = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
     
     // 断面平面を表す薄いボックスを作成
     // 平面の法線ベクトルに垂直な方向に薄いボックスを配置

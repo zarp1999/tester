@@ -1701,7 +1701,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.8,
-        roughness: 0.5
+        roughness: 0.5,
+        depthWrite: false
       });
       const floor = new THREE.Mesh(floorGeometry, floorMaterial);
       floor.rotation.x = -Math.PI / 2;
@@ -1865,14 +1866,14 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           if (cameraRef.current && controlsRef.current) {
             // グリッド線の角度から断面平面の法線ベクトルを計算
             const angleRad = THREE.MathUtils.degToRad(gridAngle);
-            // グリッド線の方向ベクトル
-            const gridDirection = new THREE.Vector3(
+            // 断面平面の法線ベクトル（角度で直接指定）
+            const planeNormal = new THREE.Vector3(
               Math.cos(angleRad),
               0,
               Math.sin(angleRad)
             ).normalize();
-            // 断面平面の法線ベクトル（グリッド線に垂直）
-            const planeNormal = new THREE.Vector3(gridDirection.z, 0, -gridDirection.x).normalize();
+            // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
+            const gridDirection = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
             
             // カメラの位置を断面平面から適当な距離に配置（法線ベクトルの方向に）
             const cameraDistance = 50; // グリッド線からの距離
