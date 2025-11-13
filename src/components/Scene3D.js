@@ -1059,7 +1059,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
   // カメラタイプを切り替える関数
   const toggleCameraType = () => {
-    if (!cameraRef.current || !controlsRef.current || !mountRef.current) return;
+    if (!cameraRef.current || !controlsRef.current || !mountRef.current || !rendererRef.current) return;
 
     const currentCamera = cameraRef.current;
     const controls = controlsRef.current;
@@ -1073,11 +1073,19 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     const distance = position.distanceTo(target);
 
     let newCamera;
+    let newCameraType;
 
-    if (cameraType === 'perspective') {
+    // 現在のカメラの型を直接判定（stateではなくinstanceofで判定）
+    if (currentCamera instanceof THREE.PerspectiveCamera) {
       // 正射投影カメラに切り替え
-      // 視野範囲を距離に基づいて計算（距離の50%程度、最小10、最大200）
-      const size = Math.max(10, Math.min(200, distance * 0.5));
+      // 透視投影カメラの視野角（FOV）から正射投影のサイズを計算
+      const fov = currentCamera.fov || 75;
+      const fovRad = THREE.MathUtils.degToRad(fov);
+      // 距離に基づいて視野の高さを計算
+      const viewHeight = 2 * Math.tan(fovRad / 2) * distance;
+      // 正射投影のサイズは視野の高さを使用（最小20、最大500）
+      const size = Math.max(20, Math.min(500, viewHeight * 0.5));
+      
       newCamera = new THREE.OrthographicCamera(
         -size * aspect,
         size * aspect,
@@ -1088,15 +1096,26 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       );
       newCamera.position.copy(position);
       newCamera.lookAt(target);
-      setCameraType('orthographic');
-      console.log('カメラを正射投影に切り替えました。サイズ:', size);
-    } else {
+      newCamera.updateProjectionMatrix();
+      newCameraType = 'orthographic';
+      console.log('カメラを正射投影に切り替えました。距離:', distance.toFixed(2), 'サイズ:', size.toFixed(2));
+    } else if (currentCamera instanceof THREE.OrthographicCamera) {
       // 透視投影カメラに切り替え
-      newCamera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+      // 正射投影カメラのサイズから透視投影の視野を推定
+      const orthoSize = (currentCamera.top - currentCamera.bottom) / 2;
+      // 正射投影のサイズから距離を逆算してFOVを計算
+      const estimatedFov = 2 * Math.atan(orthoSize / distance) * 180 / Math.PI;
+      const fov = Math.max(30, Math.min(120, estimatedFov));
+      
+      newCamera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 1000);
       newCamera.position.copy(position);
       newCamera.lookAt(target);
-      setCameraType('perspective');
-      console.log('カメラを透視投影に切り替えました。');
+      newCamera.updateProjectionMatrix();
+      newCameraType = 'perspective';
+      console.log('カメラを透視投影に切り替えました。FOV:', fov.toFixed(2));
+    } else {
+      console.error('不明なカメラタイプ:', currentCamera);
+      return;
     }
 
     // OrbitControlsを新しいカメラに接続
@@ -1106,6 +1125,14 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     // カメラ参照を更新
     cameraRef.current = newCamera;
+    
+    // stateを更新
+    setCameraType(newCameraType);
+    
+    // 即座にレンダリングを更新
+    if (rendererRef.current && sceneRef.current) {
+      rendererRef.current.render(sceneRef.current, newCamera);
+    }
   };
 
   // 初期化
