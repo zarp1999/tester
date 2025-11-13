@@ -1035,7 +1035,13 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
       return;
     }
-    keysPressed.current[event.key.toLowerCase()] = true;
+    // Spaceキーの場合は特別に処理
+    if (event.code === 'Space' || event.key === ' ') {
+      keysPressed.current[' '] = true;
+      event.preventDefault(); // ページのスクロールを防ぐ
+    } else {
+      keysPressed.current[event.key.toLowerCase()] = true;
+    }
   };
 
   const handleKeyUp = (event) => {
@@ -1043,7 +1049,12 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
       return;
     }
-    keysPressed.current[event.key.toLowerCase()] = false;
+    // Spaceキーの場合は特別に処理
+    if (event.code === 'Space' || event.key === ' ') {
+      keysPressed.current[' '] = false;
+    } else {
+      keysPressed.current[event.key.toLowerCase()] = false;
+    }
   };
 
   // カメラタイプを切り替える関数
@@ -1065,8 +1076,8 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     if (cameraType === 'perspective') {
       // 正射投影カメラに切り替え
-      // 視野範囲を距離に基づいて計算（距離の20%程度）
-      const size = distance * 0.2;
+      // 視野範囲を距離に基づいて計算（距離の50%程度、最小10、最大200）
+      const size = Math.max(10, Math.min(200, distance * 0.5));
       newCamera = new THREE.OrthographicCamera(
         -size * aspect,
         size * aspect,
@@ -1078,12 +1089,14 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       newCamera.position.copy(position);
       newCamera.lookAt(target);
       setCameraType('orthographic');
+      console.log('カメラを正射投影に切り替えました。サイズ:', size);
     } else {
       // 透視投影カメラに切り替え
       newCamera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
       newCamera.position.copy(position);
       newCamera.lookAt(target);
       setCameraType('perspective');
+      console.log('カメラを透視投影に切り替えました。');
     }
 
     // OrbitControlsを新しいカメラに接続
