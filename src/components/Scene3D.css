@@ -1,6 +1,6 @@
 .scene3d-container {
   width: 100%;
-  height: 100%;
+  height: 93%;
   position: relative;
 }
 
@@ -25,6 +25,9 @@
   flex-direction: column;
   gap: 10px;
   z-index: 10;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .camera-position-info {

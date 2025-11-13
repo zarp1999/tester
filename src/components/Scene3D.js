@@ -33,7 +33,13 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
-  const previousTargetPosition = useRef(new THREE.Vector3(0, 0, 0));
+  
+  // カメラリグと両方のカメラ用のref
+  const cameraRigRef = useRef(null);
+  const cameraPerspectiveRef = useRef(null);
+  const cameraOrthoRef = useRef(null);
+  const activeCameraRef = useRef(null);
+  const frustumSizeRef = useRef(100); // 正射投影カメラのサイズ
 
   // アウトライン表示用のref（EdgesGeometry方式）
   const outlineHelperRef = useRef(null);
@@ -1041,13 +1047,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
       return;
     }
-    // Spaceキーの場合は特別に処理
-    if (event.code === 'Space' || event.key === ' ') {
-      keysPressed.current[' '] = true;
-      event.preventDefault(); // ページのスクロールを防ぐ
-    } else {
-      keysPressed.current[event.key.toLowerCase()] = true;
-    }
+    keysPressed.current[event.key.toLowerCase()] = true;
   };
 
   const handleKeyUp = (event) => {
@@ -1055,106 +1055,36 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
       return;
     }
-    // Spaceキーの場合は特別に処理
-    if (event.code === 'Space' || event.key === ' ') {
-      keysPressed.current[' '] = false;
-    } else {
-      keysPressed.current[event.key.toLowerCase()] = false;
-    }
+    keysPressed.current[event.key.toLowerCase()] = false;
   };
 
-  // カメラタイプを切り替える関数
-  const toggleCameraType = () => {
-    if (!cameraRef.current || !controlsRef.current || !mountRef.current || !rendererRef.current) return;
-
-    const currentCamera = cameraRef.current;
+  // カメラタイプを切り替える関数（O/Pキー用）
+  const switchCameraType = (type) => {
+    if (!cameraRigRef.current || !cameraPerspectiveRef.current || !cameraOrthoRef.current || !controlsRef.current) return;
+    
+    const cameraRig = cameraRigRef.current;
+    const cameraPerspective = cameraPerspectiveRef.current;
+    const cameraOrtho = cameraOrthoRef.current;
     const controls = controlsRef.current;
-    const width = mountRef.current.clientWidth;
-    const height = mountRef.current.clientHeight;
-    const aspect = width / height;
-
-    // 現在のカメラの状態を保存
-    const position = currentCamera.position.clone();
-    const target = controls.target.clone();
-    const distance = position.distanceTo(target);
-
-    let newCamera;
-    let newCameraType;
-
-    // 現在のカメラの型を直接判定（stateではなくinstanceofで判定）
-    if (currentCamera instanceof THREE.PerspectiveCamera) {
-      // 正射投影カメラに切り替え
-      // 透視投影カメラの視野角（FOV）から正射投影のサイズを計算
-      const fov = currentCamera.fov || 75;
-      const fovRad = THREE.MathUtils.degToRad(fov);
-      // 距離に基づいて視野の高さを計算
-      const viewHeight = 2 * Math.tan(fovRad / 2) * distance;
-      // 正射投影のサイズは視野の高さを使用（最小20、最大500）
-      const size = Math.max(20, Math.min(500, viewHeight * 0.5));
-      
-      newCamera = new THREE.OrthographicCamera(
-        -size * aspect,
-        size * aspect,
-        size,
-        -size,
-        0.1,
-        1000
-      );
-      // 正射投影カメラの場合、ターゲットに対して正対するように位置を調整
-      // カメラからターゲットへの方向ベクトルを計算
-      const direction = target.clone().sub(position).normalize();
-      // カメラをターゲットから一定距離離れた位置に配置（正対する）
-      const orthoDistance = Math.max(50, distance); // 最小距離50
-      const newPosition = target.clone().sub(direction.multiplyScalar(orthoDistance));
-      newCamera.position.copy(newPosition);
-      // ターゲットを正対するようにlookAtを設定
-      newCamera.lookAt(target);
-      // controlsのターゲットも更新
-      controls.target.copy(target);
-      newCamera.updateProjectionMatrix();
-      newCameraType = 'orthographic';
-      console.log('カメラを正射投影に切り替えました。距離:', distance.toFixed(2), 'サイズ:', size.toFixed(2));
-    } else if (currentCamera instanceof THREE.OrthographicCamera) {
-      // 透視投影カメラに切り替え
-      // 正射投影カメラのサイズから透視投影の視野を推定
-      const orthoSize = (currentCamera.top - currentCamera.bottom) / 2;
-      // 正射投影のサイズから距離を逆算してFOVを計算
-      const estimatedFov = 2 * Math.atan(orthoSize / distance) * 180 / Math.PI;
-      const fov = Math.max(30, Math.min(120, estimatedFov));
-      
-      newCamera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 1000);
-      newCamera.position.copy(position);
-      newCamera.lookAt(target);
-      newCamera.updateProjectionMatrix();
-      newCameraType = 'perspective';
-      console.log('カメラを透視投影に切り替えました。FOV:', fov.toFixed(2));
-    } else {
-      console.error('不明なカメラタイプ:', currentCamera);
-      return;
-    }
-
-    // OrbitControlsを新しいカメラに接続
-    controls.object = newCamera;
-    controls.target.copy(target);
     
-    // ターゲット位置の追跡を初期化
-    previousTargetPosition.current.copy(target);
-    
-    // 正射投影カメラの場合はパン操作を有効化、透視投影の場合は無効化
-    if (newCamera instanceof THREE.OrthographicCamera) {
-      controls.enablePan = true; // パン操作を有効化
-      // 正射投影カメラの場合、ズームはカメラのサイズを変更する
-      controls.zoomSpeed = 1.0; // ズーム速度を調整
-      // 左クリックでパン操作を有効化
+    // アクティブカメラを切り替え
+    if (type === 'orthographic') {
+      activeCameraRef.current = cameraOrtho;
+      cameraRef.current = cameraOrtho;
+      setCameraType('orthographic');
+      controls.object = cameraOrtho;
+      controls.enablePan = true;
       controls.mouseButtons = {
         LEFT: THREE.MOUSE.PAN,
         MIDDLE: THREE.MOUSE.DOLLY,
         RIGHT: THREE.MOUSE.ROTATE
       };
     } else {
-      controls.enablePan = false; // パン操作を無効化
-      controls.zoomSpeed = 0.5; // ズーム速度を元に戻す
-      // 左クリックを無効化
+      activeCameraRef.current = cameraPerspective;
+      cameraRef.current = cameraPerspective;
+      setCameraType('perspective');
+      controls.object = cameraPerspective;
+      controls.enablePan = false;
       controls.mouseButtons = {
         LEFT: null,
         MIDDLE: THREE.MOUSE.DOLLY,
@@ -1163,17 +1093,6 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     }
     
     controls.update();
-
-    // カメラ参照を更新
-    cameraRef.current = newCamera;
-    
-    // stateを更新
-    setCameraType(newCameraType);
-    
-    // 即座にレンダリングを更新
-    if (rendererRef.current && sceneRef.current) {
-      rendererRef.current.render(sceneRef.current, newCamera);
-    }
   };
 
   // 初期化
@@ -1191,17 +1110,44 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     if (!hideBackground) {
       scene.fog = new THREE.Fog(0x8B7355, 20, 100);
     }
-    // カメラの作成
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      mountRef.current.clientWidth / mountRef.current.clientHeight,
+    // カメラリグの作成（Three.jsのサンプルに基づく）
+    const cameraRig = new THREE.Group();
+    cameraRigRef.current = cameraRig;
+    scene.add(cameraRig);
+    
+    // アスペクト比を計算
+    const aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+    const frustumSize = 100; // 正射投影カメラのサイズ
+    frustumSizeRef.current = frustumSize;
+    
+    // カメラリグの初期位置を設定
+    cameraRig.position.set(20, 20, 20);
+    
+    // 透視投影カメラの作成（カメラリグ内での相対位置は(0,0,0)）
+    const cameraPerspective = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+    cameraPerspective.position.set(0, 0, 0);
+    cameraPerspectiveRef.current = cameraPerspective;
+    cameraRig.add(cameraPerspective);
+    
+    // 正射投影カメラの作成（カメラリグ内での相対位置は(0,0,0)）
+    const cameraOrtho = new THREE.OrthographicCamera(
+      -frustumSize * aspect / 2,
+      frustumSize * aspect / 2,
+      frustumSize / 2,
+      -frustumSize / 2,
       0.1,
       1000
     );
-    camera.position.set(20, 20, 20);
-    camera.lookAt(0, 0, 0);
-    initialCameraPosition.current.copy(camera.position);
-    initialCameraRotation.current.copy(camera.rotation);
+    cameraOrtho.position.set(0, 0, 0);
+    cameraOrthoRef.current = cameraOrtho;
+    cameraRig.add(cameraOrtho);
+    
+    // 初期カメラは透視投影
+    const camera = cameraPerspective;
+    activeCameraRef.current = cameraPerspective;
+    // カメラリグの位置と回転を初期化
+    initialCameraPosition.current.copy(cameraRig.position);
+    initialCameraRotation.current.copy(cameraRig.rotation);
     cameraRef.current = camera;
 
     // レンダラーの作成
@@ -1276,31 +1222,35 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       const rollDeg = Number(userPos.roll);
 
       if (regionXY && Number.isFinite(height)) {
-        camera.position.set(regionXY.x, height, regionXY.y);
+        // カメラリグの位置を設定（両方のカメラが同じ位置を持つ）
+        cameraRig.position.set(regionXY.x, height, regionXY.y);
+        cameraPerspective.position.set(0, 0, 0); // リグ内での相対位置
+        cameraOrtho.position.set(0, 0, 0); // リグ内での相対位置
       }
 
       if ([yawDeg, pitchDeg, rollDeg].some((v) => Number.isFinite(v))) {
         const yaw = THREE.MathUtils.degToRad(Number.isFinite(yawDeg) ? yawDeg : 0);
         const pitch = THREE.MathUtils.degToRad(Number.isFinite(pitchDeg) ? pitchDeg : 0);
         const roll = THREE.MathUtils.degToRad(Number.isFinite(rollDeg) ? rollDeg : 0);
-        camera.rotation.set(pitch, yaw, roll, 'XYZ');
+        // カメラリグの回転を設定
+        cameraRig.rotation.set(pitch, yaw, roll, 'XYZ');
 
         // ここで OrbitControls の target をカメラの前方に合わせて再設定し、初期回転を維持
-        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        const target = camera.position.clone().add(forward.multiplyScalar(10));
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraRig.quaternion);
+        const target = cameraRig.position.clone().add(forward.multiplyScalar(10));
         controls.target.copy(target);
         controls.update();
       }
 
-      initialCameraPosition.current.copy(camera.position);
-      initialCameraRotation.current.copy(camera.rotation);
-      previousCameraPosition.current.copy(camera.position);
-      previousCameraRotation.current.copy(camera.rotation);
+      initialCameraPosition.current.copy(cameraRig.position);
+      initialCameraRotation.current.copy(cameraRig.rotation);
+      previousCameraPosition.current.copy(cameraRig.position);
+      previousCameraRotation.current.copy(cameraRig.rotation);
 
       const cameraInfoData = {
-        x: camera.position.x,
-        y: camera.position.y,
-        z: camera.position.z,
+        x: cameraRig.position.x,
+        y: cameraRig.position.y,
+        z: cameraRig.position.z,
         roll: (Number.isFinite(rollDeg) ? rollDeg : 0).toFixed(1),
         pitch: (Number.isFinite(pitchDeg) ? pitchDeg : 0).toFixed(1),
         yaw: (Number.isFinite(yawDeg) ? yawDeg : 0).toFixed(1)
@@ -1368,23 +1318,25 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     // リサイズハンドラー
     const handleResize = () => {
-      if (!mountRef.current || !cameraRef.current) return;
+      if (!mountRef.current) return;
       const width = mountRef.current.clientWidth;
       const height = mountRef.current.clientHeight;
-      const camera = cameraRef.current;
+      const aspect = width / height;
 
-      if (camera instanceof THREE.PerspectiveCamera) {
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-      } else if (camera instanceof THREE.OrthographicCamera) {
-        // 正射投影カメラの場合、現在のサイズを保持してアスペクト比を調整
-        const currentSize = (camera.top - camera.bottom) / 2;
-        const aspect = width / height;
-        camera.left = -currentSize * aspect;
-        camera.right = currentSize * aspect;
-        camera.top = currentSize;
-        camera.bottom = -currentSize;
-        camera.updateProjectionMatrix();
+      // 透視投影カメラの更新
+      if (cameraPerspectiveRef.current) {
+        cameraPerspectiveRef.current.aspect = aspect;
+        cameraPerspectiveRef.current.updateProjectionMatrix();
+      }
+
+      // 正射投影カメラの更新
+      if (cameraOrthoRef.current) {
+        const frustumSize = frustumSizeRef.current;
+        cameraOrthoRef.current.left = -frustumSize * aspect / 2;
+        cameraOrthoRef.current.right = frustumSize * aspect / 2;
+        cameraOrthoRef.current.top = frustumSize / 2;
+        cameraOrthoRef.current.bottom = -frustumSize / 2;
+        cameraOrthoRef.current.updateProjectionMatrix();
       }
 
       renderer.setSize(width, height);
@@ -1400,12 +1352,15 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     const animate = () => {
       requestAnimationFrame(animate);
 
+      // アクティブカメラを取得
+      const activeCamera = activeCameraRef.current || cameraRef.current;
+      const cameraRig = cameraRigRef.current;
+      
       // 左Shiftキーでマウス操作を低速化
-      const camera = cameraRef.current;
       if (keysPressed.current['shift']) {
         controls.rotateSpeed = 0.5;
         // 正射投影カメラの場合はズーム速度を維持、透視投影の場合は低速化
-        if (camera instanceof THREE.OrthographicCamera) {
+        if (activeCamera instanceof THREE.OrthographicCamera) {
           controls.zoomSpeed = 0.5; // 正射投影でもShiftキーで低速化
         } else {
           controls.zoomSpeed = 0.5;
@@ -1413,7 +1368,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       } else {
         controls.rotateSpeed = 1.0;
         // 正射投影カメラの場合はズーム速度を高く設定、透視投影の場合は通常速度
-        if (camera instanceof THREE.OrthographicCamera) {
+        if (activeCamera instanceof THREE.OrthographicCamera) {
           controls.zoomSpeed = 1.0; // 正射投影は拡縮が重要なので速度を上げる
         } else {
           controls.zoomSpeed = 0.5;
@@ -1423,12 +1378,26 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       // OrbitControlsの更新
       controls.update();
 
-      // 正射投影カメラの場合、パン操作時にカメラの位置も一緒に移動させる
-      if (camera instanceof THREE.OrthographicCamera) {
+      // OrbitControlsがカメラの位置を変更した場合、カメラリグの位置も更新
+      if (cameraRig && activeCamera) {
+        // アクティブカメラのワールド位置を取得
+        activeCamera.updateMatrixWorld();
+        const worldPosition = new THREE.Vector3();
+        activeCamera.getWorldPosition(worldPosition);
+        // カメラリグの位置を更新
+        cameraRig.position.copy(worldPosition);
+        // カメラリグをターゲットに向ける（Three.jsのサンプルに基づく）
+        if (controls.target) {
+          cameraRig.lookAt(controls.target);
+        }
+      }
+
+      // 正射投影カメラの場合、パン操作時にカメラリグの位置も一緒に移動させる
+      if (activeCamera instanceof THREE.OrthographicCamera && cameraRig) {
         // ターゲットの移動量を計算
         const targetDelta = controls.target.clone().sub(previousTargetPosition.current);
-        // カメラの位置も同じだけ移動
-        camera.position.add(targetDelta);
+        // カメラリグの位置も同じだけ移動
+        cameraRig.position.add(targetDelta);
         // 前回のターゲット位置を更新（次回の計算用）
         previousTargetPosition.current.copy(controls.target);
       } else {
@@ -1436,92 +1405,110 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         previousTargetPosition.current.copy(controls.target);
       }
 
-      // キーボード操作でカメラ移動
-      const speed = keysPressed.current['shift'] ? 0.1 : 1.0; // Shiftで低速
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-      const up = new THREE.Vector3(0, 1, 0);
+      // キーボード操作でカメラ移動（カメラリグを移動）
+      if (cameraRig) {
+        const speed = keysPressed.current['shift'] ? 0.1 : 1.0; // Shiftで低速
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraRig.quaternion);
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraRig.quaternion);
+        const up = new THREE.Vector3(0, 1, 0);
 
-      let cameraMoved = false;
+        let cameraMoved = false;
 
-      // W:上 S:下
-      if (keysPressed.current['w']) {
-        camera.position.add(up.clone().multiplyScalar(speed));
-        cameraMoved = true;
-      }
-      if (keysPressed.current['s']) {
-        camera.position.add(up.clone().multiplyScalar(-speed));
-        cameraMoved = true;
-      }
+        // W:上 S:下
+        if (keysPressed.current['w']) {
+          cameraRig.position.add(up.clone().multiplyScalar(speed));
+          cameraMoved = true;
+        }
+        if (keysPressed.current['s']) {
+          cameraRig.position.add(up.clone().multiplyScalar(-speed));
+          cameraMoved = true;
+        }
 
-      // A:左 D:右
-      if (keysPressed.current['a']) {
-        camera.position.add(right.clone().multiplyScalar(-speed));
-        cameraMoved = true;
-      }
-      if (keysPressed.current['d']) {
-        camera.position.add(right.clone().multiplyScalar(speed));
-        cameraMoved = true;
-      }
+        // A:左 D:右
+        if (keysPressed.current['a']) {
+          cameraRig.position.add(right.clone().multiplyScalar(-speed));
+          cameraMoved = true;
+        }
+        if (keysPressed.current['d']) {
+          cameraRig.position.add(right.clone().multiplyScalar(speed));
+          cameraMoved = true;
+        }
 
-      // Q:後進 E:前進
-      if (keysPressed.current['q']) {
-        camera.position.add(forward.clone().multiplyScalar(-speed));
-        cameraMoved = true;
-      }
-      if (keysPressed.current['e']) {
-        camera.position.add(forward.clone().multiplyScalar(speed));
-        cameraMoved = true;
-      }
+        // Q:後進 E:前進
+        if (keysPressed.current['q']) {
+          cameraRig.position.add(forward.clone().multiplyScalar(-speed));
+          cameraMoved = true;
+        }
+        if (keysPressed.current['e']) {
+          cameraRig.position.add(forward.clone().multiplyScalar(speed));
+          cameraMoved = true;
+        }
 
-      // カメラが移動した場合、ターゲットも動的に更新
-      if (cameraMoved) {
-        const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        controls.target.copy(camera.position.clone().add(direction.multiplyScalar(10)));
+        // カメラが移動した場合、ターゲットも動的に更新
+        if (cameraMoved) {
+          const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraRig.quaternion);
+          controls.target.copy(cameraRig.position.clone().add(direction.multiplyScalar(10)));
+        }
       }
 
       // Y:位置向き初期化
       if (keysPressed.current['y']) {
-        camera.position.copy(initialCameraPosition.current);
-        camera.rotation.copy(initialCameraRotation.current);
+        if (cameraRig) {
+          cameraRig.position.copy(initialCameraPosition.current);
+          cameraRig.rotation.copy(initialCameraRotation.current);
+        }
         controls.target.set(0, 0, 0);
         keysPressed.current['y'] = false;
       }
 
-      // P:向き初期化
-      if (keysPressed.current['p']) {
-        camera.rotation.copy(initialCameraRotation.current);
-        keysPressed.current['p'] = false;
-      }
+      // P:向き初期化（カメラ切り替えと競合するため、別のキーに変更するか、条件を追加）
+      // 注意: Pキーはカメラ切り替えで使用しているため、この処理は無効化
+      // if (keysPressed.current['p'] && !keysPressed.current['shift']) {
+      //   if (cameraRig) {
+      //     cameraRig.rotation.copy(initialCameraRotation.current);
+      //   }
+      //   keysPressed.current['p'] = false;
+      // }
 
-      // O:位置初期化
-      if (keysPressed.current['o']) {
-        camera.position.copy(initialCameraPosition.current);
-        keysPressed.current['o'] = false;
-      }
+      // O:位置初期化（カメラ切り替えと競合するため、別のキーに変更するか、条件を追加）
+      // 注意: Oキーはカメラ切り替えで使用しているため、この処理は無効化
+      // if (keysPressed.current['o'] && !keysPressed.current['shift']) {
+      //   if (cameraRig) {
+      //     cameraRig.position.copy(initialCameraPosition.current);
+      //   }
+      //   keysPressed.current['o'] = false;
+      // }
 
       // L:パン北向き
       if (keysPressed.current['l']) {
-        camera.rotation.y = 0;
+        if (cameraRig) {
+          cameraRig.rotation.y = 0;
+        }
         keysPressed.current['l'] = false;
       }
 
       // I:チルト水平
       if (keysPressed.current['i']) {
-        camera.rotation.x = 0;
+        if (cameraRig) {
+          cameraRig.rotation.x = 0;
+        }
         keysPressed.current['i'] = false;
       }
 
       // T:チルト真下
       if (keysPressed.current['t']) {
-        camera.rotation.x = Math.PI / 2;
+        if (cameraRig) {
+          cameraRig.rotation.x = Math.PI / 2;
+        }
         keysPressed.current['t'] = false;
       }
 
       // R:チルト水平・高さ初期値
       if (keysPressed.current['r']) {
-        camera.rotation.x = 0;
-        camera.position.y = initialCameraPosition.current.y;
+        if (cameraRig) {
+          cameraRig.rotation.x = 0;
+          cameraRig.position.y = initialCameraPosition.current.y;
+        }
         keysPressed.current['r'] = false;
       }
 
@@ -1580,10 +1567,16 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         keysPressed.current['backspace'] = false;
       }
 
-      // Space: 透視投影・正射投影の切り替え
-      if (keysPressed.current[' ']) {
-        toggleCameraType();
-        keysPressed.current[' '] = false;
+      // O: 正射投影カメラに切り替え
+      if (keysPressed.current['o']) {
+        switchCameraType('orthographic');
+        keysPressed.current['o'] = false;
+      }
+
+      // P: 透視投影カメラに切り替え
+      if (keysPressed.current['p']) {
+        switchCameraType('perspective');
+        keysPressed.current['p'] = false;
       }
 
       // U:パン重心
@@ -1622,7 +1615,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       if (mouseMovedRef.current) {
         mouseMovedRef.current = false; // フラグをリセット
 
-        raycasterRef.current.setFromCamera(mouseRef.current, camera);
+        raycasterRef.current.setFromCamera(mouseRef.current, activeCamera);
         const intersects = raycasterRef.current.intersectObjects(
           Object.values(objectsRef.current),
           false
@@ -1648,28 +1641,29 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       }
 
       // カメラ位置情報を更新（位置または回転に変化があった場合のみ）
-      const positionChanged = camera.position.distanceTo(previousCameraPosition.current) > 0.001;
-      const rotationChanged =
-        Math.abs(camera.rotation.x - previousCameraRotation.current.x) > 0.01 ||
-        Math.abs(camera.rotation.y - previousCameraRotation.current.y) > 0.01 ||
-        Math.abs(camera.rotation.z - previousCameraRotation.current.z) > 0.01;
+      if (cameraRig) {
+        const positionChanged = cameraRig.position.distanceTo(previousCameraPosition.current) > 0.001;
+        const rotationChanged =
+          Math.abs(cameraRig.rotation.x - previousCameraRotation.current.x) > 0.01 ||
+          Math.abs(cameraRig.rotation.y - previousCameraRotation.current.y) > 0.01 ||
+          Math.abs(cameraRig.rotation.z - previousCameraRotation.current.z) > 0.01;
 
+        if (positionChanged || rotationChanged) {
+          const radToDeg = (rad) => ((rad * 180 / Math.PI) % 360).toFixed(1);
+          const animationCameraInfo = {
+            x: cameraRig.position.x,
+            y: cameraRig.position.y,
+            z: cameraRig.position.z,
+            roll: radToDeg(cameraRig.rotation.z),
+            pitch: radToDeg(cameraRig.rotation.x),
+            yaw: radToDeg(cameraRig.rotation.y)
+          };
+          setCameraInfo(animationCameraInfo);
 
-      if (positionChanged || rotationChanged) {
-        const radToDeg = (rad) => ((rad * 180 / Math.PI) % 360).toFixed(1);
-        const animationCameraInfo = {
-          x: camera.position.x,
-          y: camera.position.y,
-          z: camera.position.z,
-          roll: radToDeg(camera.rotation.z),
-          pitch: radToDeg(camera.rotation.x),
-          yaw: radToDeg(camera.rotation.y)
-        };
-        setCameraInfo(animationCameraInfo);
-
-        // 前回の値を更新
-        previousCameraPosition.current.copy(camera.position);
-        previousCameraRotation.current.copy(camera.rotation);
+          // 前回の値を更新
+          previousCameraPosition.current.copy(cameraRig.position);
+          previousCameraRotation.current.copy(cameraRig.rotation);
+        }
       }
 
       // 距離計測の線をカメラに向けて回転
@@ -1696,7 +1690,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
       // レンダリング（エラーハンドリング付き）
       try {
-        renderer.render(scene, camera);
+        renderer.render(scene, activeCamera);
       } catch (error) {
         console.error('Rendering error:', error);
         // エラー発生時はアニメーションを停止
@@ -2058,9 +2052,12 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
             // カメラの高さを適当に設定（断面が見えるように）
             cameraPosition.y = 20;
             
-            cameraRef.current.position.copy(cameraPosition);
-            // カメラを断面平面の中心に向ける
-            cameraRef.current.lookAt(planePoint);
+            // カメラリグの位置を設定
+            if (cameraRigRef.current) {
+              cameraRigRef.current.position.copy(cameraPosition);
+              // カメラリグを断面平面の中心に向ける
+              cameraRigRef.current.lookAt(planePoint);
+            }
             controlsRef.current.target.copy(planePoint);
             controlsRef.current.update();
           }
@@ -2096,7 +2093,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           ESCキー: 離隔をクリア<br />
           ◆表示切り替え<br />
           1: ガイド 2: 背景 5:離隔 6: 折れ線 7: 管路 8: 路面 9: 地表面<br />
-          Space: 透視投影・正射投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
+          O: 正射投影 P: 透視投影 マウスホイール: 拡大縮小 +左Ctrlキー: 低速<br />
           ◆離隔計測結果
           {/* 距離計測結果を表示 */}
           {measurementResult && (

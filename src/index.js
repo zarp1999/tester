@@ -31,13 +31,6 @@ function Navigation() {
             <span className="nav-icon">📐</span>
             <span className="nav-text">断面図生成</span>
           </Link>
-          <Link 
-            to="/extrusion-test" 
-            className={`nav-link ${location.pathname === '/extrusion-test' ? 'active' : ''}`}
-          >
-            <span className="nav-icon">🔧</span>
-            <span className="nav-text">押し出しテスト</span>
-          </Link>
         </div>
       </div>
     </nav>
