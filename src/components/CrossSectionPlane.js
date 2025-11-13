@@ -88,8 +88,8 @@ class CrossSectionPlane {
     }
     
     const maxDepth = -50; // グリッド描画の下限(m)
-    // 断面自動生成モードの場合はclickPointを直接使用、通常のクリックの場合はintersectionPointを使用
-    const useClickPoint = this.autoModeEnabled;
+    // 角度0度の時は管路中心線との交点を使用、それ以外はclickPointを使用
+    const useClickPoint = this.autoModeEnabled && this.gridAngle !== 0;
     const linePosition = useClickPoint 
       ? new THREE.Vector3(clickPoint.x, 0, clickPoint.z)
       : new THREE.Vector3(intersectionPoint.x, 0, intersectionPoint.z);
@@ -100,11 +100,11 @@ class CrossSectionPlane {
     
     // 断面平面で交差するすべての管路に縦線を描画
     // グリッド線の角度を考慮して断面平面を定義
-    if (this.autoModeEnabled) {
-      // 自動生成モードの場合、グリッド線に垂直な平面で交差判定
+    if (this.autoModeEnabled && this.gridAngle !== 0) {
+      // 自動生成モードで角度が0度でない場合、グリッド線に垂直な平面で交差判定
       this.drawVerticalLinesAtRotatedPlane(clickPoint, null);
     } else {
-      // 通常モードの場合は従来の処理
+      // 通常モードまたは角度0度の場合、従来の処理（Z平面で交差判定）
       this.drawVerticalLinesAtCrossSectionPlane(clickPoint.z, null);
     }
     
@@ -463,11 +463,11 @@ class CrossSectionPlane {
     if (pipeObject && crossSectionZ !== null) {
       try {
         // グリッド線の角度を考慮してCSG断面を描画
-        if (this.autoModeEnabled || this.gridAngle !== 0) {
-          // 自動生成モードまたは回転した断面平面の場合
+        if (this.gridAngle !== 0) {
+          // 角度が0度でない場合：回転した断面平面で切断（円形/楕円形断面）
           this.drawCSGCrossSectionRotated(pipeObject, center, color);
         } else {
-          // 通常モードで角度0度の場合（従来の処理）
+          // 角度が0度の場合：管軸を含む断面平面で切断（矩形断面）
           this.drawCSGCrossSection(pipeObject, crossSectionZ, color);
         }
       } catch (error) {
