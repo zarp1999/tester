@@ -33,6 +33,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
+  const previousTargetPosition = useRef(new THREE.Vector3(0, 0, 0));
 
   // アウトライン表示用のref（EdgesGeometry方式）
   const outlineHelperRef = useRef(null);
@@ -471,6 +472,11 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const handleMouseDown = (event) => {
     // 左クリックのみ処理
     if (event.button !== 0) {
+      return;
+    }
+
+    // 正射投影カメラの場合は、OrbitControlsのパン操作を優先するため処理をスキップ
+    if (cameraRef.current instanceof THREE.OrthographicCamera) {
       return;
     }
 
@@ -1094,8 +1100,17 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         0.1,
         1000
       );
-      newCamera.position.copy(position);
+      // 正射投影カメラの場合、ターゲットに対して正対するように位置を調整
+      // カメラからターゲットへの方向ベクトルを計算
+      const direction = target.clone().sub(position).normalize();
+      // カメラをターゲットから一定距離離れた位置に配置（正対する）
+      const orthoDistance = Math.max(50, distance); // 最小距離50
+      const newPosition = target.clone().sub(direction.multiplyScalar(orthoDistance));
+      newCamera.position.copy(newPosition);
+      // ターゲットを正対するようにlookAtを設定
       newCamera.lookAt(target);
+      // controlsのターゲットも更新
+      controls.target.copy(target);
       newCamera.updateProjectionMatrix();
       newCameraType = 'orthographic';
       console.log('カメラを正射投影に切り替えました。距離:', distance.toFixed(2), 'サイズ:', size.toFixed(2));
@@ -1121,6 +1136,9 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     // OrbitControlsを新しいカメラに接続
     controls.object = newCamera;
     controls.target.copy(target);
+    
+    // ターゲット位置の追跡を初期化
+    previousTargetPosition.current.copy(target);
     
     // 正射投影カメラの場合はパン操作を有効化、透視投影の場合は無効化
     if (newCamera instanceof THREE.OrthographicCamera) {
@@ -1404,6 +1422,19 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
       // OrbitControlsの更新
       controls.update();
+
+      // 正射投影カメラの場合、パン操作時にカメラの位置も一緒に移動させる
+      if (camera instanceof THREE.OrthographicCamera) {
+        // ターゲットの移動量を計算
+        const targetDelta = controls.target.clone().sub(previousTargetPosition.current);
+        // カメラの位置も同じだけ移動
+        camera.position.add(targetDelta);
+        // 前回のターゲット位置を更新（次回の計算用）
+        previousTargetPosition.current.copy(controls.target);
+      } else {
+        // 透視投影カメラの場合は、ターゲット位置を更新（次回正射投影に切り替えた時のため）
+        previousTargetPosition.current.copy(controls.target);
+      }
 
       // キーボード操作でカメラ移動
       const speed = keysPressed.current['shift'] ? 0.1 : 1.0; // Shiftで低速
