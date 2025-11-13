@@ -1121,6 +1121,29 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     // OrbitControlsを新しいカメラに接続
     controls.object = newCamera;
     controls.target.copy(target);
+    
+    // 正射投影カメラの場合はパン操作を有効化、透視投影の場合は無効化
+    if (newCamera instanceof THREE.OrthographicCamera) {
+      controls.enablePan = true; // パン操作を有効化
+      // 正射投影カメラの場合、ズームはカメラのサイズを変更する
+      controls.zoomSpeed = 1.0; // ズーム速度を調整
+      // 左クリックでパン操作を有効化
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE
+      };
+    } else {
+      controls.enablePan = false; // パン操作を無効化
+      controls.zoomSpeed = 0.5; // ズーム速度を元に戻す
+      // 左クリックを無効化
+      controls.mouseButtons = {
+        LEFT: null,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE
+      };
+    }
+    
     controls.update();
 
     // カメラ参照を更新
@@ -1360,12 +1383,23 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       requestAnimationFrame(animate);
 
       // 左Shiftキーでマウス操作を低速化
+      const camera = cameraRef.current;
       if (keysPressed.current['shift']) {
         controls.rotateSpeed = 0.5;
-        controls.zoomSpeed = 0.5;
+        // 正射投影カメラの場合はズーム速度を維持、透視投影の場合は低速化
+        if (camera instanceof THREE.OrthographicCamera) {
+          controls.zoomSpeed = 0.5; // 正射投影でもShiftキーで低速化
+        } else {
+          controls.zoomSpeed = 0.5;
+        }
       } else {
         controls.rotateSpeed = 1.0;
-        controls.zoomSpeed = 1.0;
+        // 正射投影カメラの場合はズーム速度を高く設定、透視投影の場合は通常速度
+        if (camera instanceof THREE.OrthographicCamera) {
+          controls.zoomSpeed = 1.0; // 正射投影は拡縮が重要なので速度を上げる
+        } else {
+          controls.zoomSpeed = 0.5;
+        }
       }
 
       // OrbitControlsの更新
