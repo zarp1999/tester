@@ -75,6 +75,9 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   // 距離計測結果のstate
   const [measurementResult, setMeasurementResult] = useState(null);
 
+  // カメラタイプのstate（'perspective' | 'orthographic'）
+  const [cameraType, setCameraType] = useState('perspective');
+
   // showPipes が変更されたときに管路オブジェクトの表示/非表示を切り替え
   useEffect(() => {
     if (!objectsRef.current) return;
@@ -1043,6 +1046,55 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     keysPressed.current[event.key.toLowerCase()] = false;
   };
 
+  // カメラタイプを切り替える関数
+  const toggleCameraType = () => {
+    if (!cameraRef.current || !controlsRef.current || !mountRef.current) return;
+
+    const currentCamera = cameraRef.current;
+    const controls = controlsRef.current;
+    const width = mountRef.current.clientWidth;
+    const height = mountRef.current.clientHeight;
+    const aspect = width / height;
+
+    // 現在のカメラの状態を保存
+    const position = currentCamera.position.clone();
+    const target = controls.target.clone();
+    const distance = position.distanceTo(target);
+
+    let newCamera;
+
+    if (cameraType === 'perspective') {
+      // 正射投影カメラに切り替え
+      // 視野範囲を距離に基づいて計算（距離の20%程度）
+      const size = distance * 0.2;
+      newCamera = new THREE.OrthographicCamera(
+        -size * aspect,
+        size * aspect,
+        size,
+        -size,
+        0.1,
+        1000
+      );
+      newCamera.position.copy(position);
+      newCamera.lookAt(target);
+      setCameraType('orthographic');
+    } else {
+      // 透視投影カメラに切り替え
+      newCamera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+      newCamera.position.copy(position);
+      newCamera.lookAt(target);
+      setCameraType('perspective');
+    }
+
+    // OrbitControlsを新しいカメラに接続
+    controls.object = newCamera;
+    controls.target.copy(target);
+    controls.update();
+
+    // カメラ参照を更新
+    cameraRef.current = newCamera;
+  };
+
   // 初期化
   useEffect(() => {
     if (!mountRef.current) return;
@@ -1235,12 +1287,25 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
     // リサイズハンドラー
     const handleResize = () => {
-      if (!mountRef.current) return;
+      if (!mountRef.current || !cameraRef.current) return;
       const width = mountRef.current.clientWidth;
       const height = mountRef.current.clientHeight;
+      const camera = cameraRef.current;
 
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
+      if (camera instanceof THREE.PerspectiveCamera) {
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      } else if (camera instanceof THREE.OrthographicCamera) {
+        // 正射投影カメラの場合、現在のサイズを保持してアスペクト比を調整
+        const currentSize = (camera.top - camera.bottom) / 2;
+        const aspect = width / height;
+        camera.left = -currentSize * aspect;
+        camera.right = currentSize * aspect;
+        camera.top = currentSize;
+        camera.bottom = -currentSize;
+        camera.updateProjectionMatrix();
+      }
+
       renderer.setSize(width, height);
 
       // CrossSectionPlaneのLine2マテリアルのresolutionを更新
@@ -1408,6 +1473,12 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
           // デバッグログ削除
         }
         keysPressed.current['backspace'] = false;
+      }
+
+      // Space: 透視投影・正射投影の切り替え
+      if (keysPressed.current[' ']) {
+        toggleCameraType();
+        keysPressed.current[' '] = false;
       }
 
       // U:パン重心
@@ -1868,9 +1939,9 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
             const angleRad = THREE.MathUtils.degToRad(gridAngle);
             // 断面平面の法線ベクトル（角度で直接指定）
             const planeNormal = new THREE.Vector3(
-              Math.cos(angleRad),
+              Math.sin(angleRad),
               0,
-              Math.sin(angleRad)
+              Math.cos(angleRad)
             ).normalize();
             // グリッド線の方向ベクトル（断面平面に沿う方向、planeNormalに垂直）
             const gridDirection = new THREE.Vector3(planeNormal.z, 0, -planeNormal.x).normalize();
@@ -1947,6 +2018,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
         <div className="camera-info-container">
           <div className="camera-position-info">
             ◆カメラ位置<br />
+            タイプ: {cameraType === 'perspective' ? '透視投影' : '正射投影'}<br />
             座標: 東西 {cameraInfo.x.toFixed(3)} 高さ {cameraInfo.y.toFixed(3)} 南北 {cameraInfo.z.toFixed(3)} [m]<br />
             向き:ロール {cameraInfo.roll} ピッチ {cameraInfo.pitch} ヨー {cameraInfo.yaw} [度]
           </div>
