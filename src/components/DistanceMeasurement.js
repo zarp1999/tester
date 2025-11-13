@@ -59,6 +59,10 @@ class DistanceMeasurement {
     this.onResultUpdate = null;
   }
 
+  updateCamera(camera) {
+    this.camera = camera;
+  }
+
   /**
    * イベントリスナーを追加
    */
