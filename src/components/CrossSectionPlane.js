@@ -32,6 +32,7 @@ class CrossSectionPlane {
     this.gridAngle = 0;
   }
 
+  // Scene3D側でカメラが切り替わった際に参照を更新
   setCamera(camera) {
     this.camera = camera;
   }

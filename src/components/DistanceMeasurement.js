@@ -59,6 +59,7 @@ class DistanceMeasurement {
     this.onResultUpdate = null;
   }
 
+  // カメラ切り替え時にScene3Dから差し替え可能にする
   updateCamera(camera) {
     this.camera = camera;
   }

@@ -17,9 +17,11 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
+  // カメラ切替用リグと各カメラ
   const cameraRigRef = useRef(null);
   const perspectiveCameraRef = useRef(null);
   const orthographicCameraRef = useRef(null);
+  // 現在どちらのカメラを使用しているかを保持
   const activeCameraTypeRef = useRef('perspective');
   const rendererRef = useRef(null);
   const objectsRef = useRef({});
@@ -55,8 +57,13 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
 
   // 距離計測用のref
   const distanceMeasurementRef = useRef(null);
+  // カメラ位置とOrbitControls.targetの相対距離（ワールド座標）
   const targetOffsetRef = useRef(new THREE.Vector3(0, 0, -10));
 
+  /**
+   * 透視/正射カメラ間で位置・姿勢を同期する
+   * - Spaceキーで切り替えた際に視点が飛ばないようにするため
+   */
   const syncCamerasFromActive = (sourceCamera = cameraRef.current) => {
     const perspectiveCamera = perspectiveCameraRef.current;
     const orthographicCamera = orthographicCameraRef.current;
@@ -77,6 +84,9 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     }
   };
 
+  /**
+   * カメラの位置/オイラー角を情報パネル用stateへ反映
+   */
   const updateCameraInfoFromCamera = (camera) => {
     if (!camera) return;
     const radToDeg = (rad) => ((rad * 180) / Math.PI) % 360;
@@ -90,6 +100,10 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     });
   };
 
+  /**
+   * 正射カメラの視体積（top/right...）を再計算
+   * - 透視カメラ距離を基準にサイズを合わせる
+   */
   const updateOrthographicFrustum = (referenceCamera = null) => {
     const orthographicCamera = orthographicCameraRef.current;
     const mount = mountRef.current;
@@ -127,6 +141,10 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     orthographicCamera.updateProjectionMatrix();
   };
 
+  /**
+   * OrbitControls.targetとカメラ位置の相対オフセットをローカル座標で記録
+   * - カメラを切り替えてもターゲットとの距離感を再現するため
+   */
   const updateTargetOffsetFromCamera = (camera = cameraRef.current) => {
     if (!camera || !controlsRef.current) return;
     const offsetWorld = controlsRef.current.target.clone().sub(camera.position);
@@ -138,6 +156,10 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     targetOffsetRef.current.copy(offsetWorld.clone().applyQuaternion(inverseQuat));
   };
 
+  /**
+   * 記録済みオフセットを使ってOrbitControls.targetを再配置
+   * - カメラが移動/切替されたときに呼び出す
+   */
   const repositionTargetUsingOffset = (camera = cameraRef.current) => {
     if (!camera || !controlsRef.current) return;
     const offsetLocal = targetOffsetRef.current.clone();
@@ -148,6 +170,10 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
     controlsRef.current.target.copy(camera.position.clone().add(offsetWorld));
   };
 
+  /**
+   * 透視カメラ <-> 正射カメラをトグル切替
+   * - 両カメラの状態を同期し、関連コンポーネントへも通知
+   */
   const toggleCameraProjection = () => {
     const currentType = activeCameraTypeRef.current;
     const nextType = currentType === 'perspective' ? 'orthographic' : 'perspective';
@@ -1231,6 +1257,7 @@ const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions,
       scene.fog = new THREE.Fog(0x8B7355, 20, 100);
     }
     // カメラリグとカメラの作成
+    // カメラ切替用のリグ（両カメラを子として保持）
     const cameraRig = new THREE.Group();
     cameraRigRef.current = cameraRig;
 
