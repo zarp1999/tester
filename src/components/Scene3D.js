@@ -1,24 +1,19 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import SkyComponent from './SkyComponent';
 import PipelineInfoDisplay from './PipelineInfoDisplay';
-import InfiniteGridHelper from './InfiniteGridHelper';
 import { DistanceMeasurement, DistanceMeasurementDisplay } from './DistanceMeasurement';
+import CrossSectionPlane from './CrossSectionPlane';
 import './Scene3D.css';
 
 /**
  * 3Dシーンコンポーネント
  * - CityJSONの内容からオブジェクトを生成
  * - キー/マウスによるカメラ操作
- * - 左上: 管路情報、左下: カメラ情報（キー1でトグル）
+ * - 左上: 管路情報、左下: カメラ情報
  */
-function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, shapeTypes, layerData, sourceTypes }) {
+const Scene3D = React.forwardRef(function Scene3D({ cityJsonData, userPositions, shapeTypes, layerData, sourceTypes, hideInfoPanel = false, hideBackground = false, enableCrossSectionMode = false, autoModeEnabled = false, onMeasurementUpdate = null, onSelectedObjectChange = null, generatedSections = [], sectionViewMode = false, currentSectionIndex = 0 }, ref) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -32,15 +27,21 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   const controlsRef = useRef(null);
   const floorRef = useRef(null);
   const skyComponentRef = useRef(null);
+  const crossSectionRef = useRef(null);
   const initialCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const initialCameraRotation = useRef(new THREE.Euler());
   const centerPosition = useRef(new THREE.Vector3(0, 0, 0));
   const previousCameraPosition = useRef(new THREE.Vector3(20, 20, 20));
   const previousCameraRotation = useRef(new THREE.Euler());
 
-  // アウトライン表示用のref
-  const composerRef = useRef(null);
-  const outlinePassRef = useRef(null);
+  // アウトライン表示用のref（EdgesGeometry方式）
+  const outlineHelperRef = useRef(null);
+  
+  // 断面自動作成モードの状態をrefで保持（クリックハンドラーで最新の値を参照するため）
+  const autoModeEnabledRef = useRef(autoModeEnabled);
+
+  // 生成された断面マーカーのref
+  const generatedSectionMarkersRef = useRef([]);
 
   // ドラッグ機能用のref
   const isDragging = useRef(false);
@@ -64,21 +65,34 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     yaw: 0.0
   });
 
-
-
-
-
-
-
   // 選択されたオブジェクトのstate
   const [selectedObject, setSelectedObject] = useState(null);
   const [showGuides, setShowGuides] = useState(true);
   const [showPipes, setShowPipes] = useState(true);
   const [showFloor, setShowFloor] = useState(true);
-  const [showBackground, setShowBackground] = useState(true);
+  const [showBackground, setShowBackground] = useState(!hideBackground);
 
   // 距離計測結果のstate
   const [measurementResult, setMeasurementResult] = useState(null);
+
+  // showPipes が変更されたときに管路オブジェクトの表示/非表示を切り替え
+  useEffect(() => {
+    if (!objectsRef.current) return;
+
+    // 全ての管路オブジェクトのvisibleプロパティを更新
+    Object.values(objectsRef.current).forEach(obj => {
+      if (obj && obj.type === 'Mesh') {
+        obj.visible = showPipes;
+      }
+    });
+  }, [showPipes]);
+
+  // 距離計測結果が更新されたときに親コンポーネントに通知
+  useEffect(() => {
+    if (onMeasurementUpdate) {
+      onMeasurementUpdate(measurementResult);
+    }
+  }, [measurementResult, onMeasurementUpdate]);
 
   // オブジェクトの元データを保存（復元機能用）
   const originalObjectsData = useRef({});
@@ -86,8 +100,6 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
   // 3Dオブジェクトの作成（shape/color対応）
   /**
    * CityJSONオブジェクトからThree.jsメッシュを生成する。
-   * - shape_type（例: Cylinder）と geometry.type（例: LineString）で分岐
-   * - source_type_id/layer_panel で色・透明度を決定
    */
   const createCityObject = (obj, shapeTypeMap, styleMap, sourceTypeMap, materialVisibilityMap, materialValStyleMap, pipeKindValStyleMap) => {
     let geometry;
@@ -99,7 +111,17 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
     // 色スタイルを決定
     const style = getPipeColorStyle(obj, styleMap, sourceTypeMap, materialValStyleMap, pipeKindValStyleMap);
-    const colorHex = style?.color || '#888888';
+    // テストデータ用の色マッピング（cross_section_typeがある場合）
+    let colorHex = style?.color || '#888888';
+    if (!style && obj.attributes?.cross_section_type) {
+      const testColorMap = {
+        'circle': '#ff0000',      // 赤
+        'ellipse': '#00ff00',     // 緑
+        'rectangle': '#0000ff',   // 青
+        'polygon': '#ffff00'      // 黄
+      };
+      colorHex = testColorMap[obj.attributes.cross_section_type] || '#888888';
+    }
     const opacity = style?.alpha ?? 1;
     // material 値と layer_panel.json の val を比較して初期表示を決定
     const initialVisible = (() => {
@@ -112,8 +134,150 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       return true;
     })();
 
+    // 押し出し図形の処理（Extrusionタイプでcross_section_typeが指定されている場合）
+    const crossSectionType = obj.attributes?.cross_section_type;
+    const isExtrusionType = (shapeTypeName === 'Extrusion' || shapeTypeName === 'Spline') && 
+                            crossSectionType && 
+                            Array.isArray(geom.vertices) && 
+                            geom.vertices.length >= 2;
+    
+    if (isExtrusionType) {
+      // 断面形状作成関数
+      const createCircleShape = (radius) => {
+        const shape = new THREE.Shape();
+        shape.absarc(0, 0, radius, 0, Math.PI * 2, false);
+        return shape;
+      };
+
+      const createEllipseShape = (radiusX, radiusY) => {
+        const shape = new THREE.Shape();
+        shape.absellipse(0, 0, radiusX, radiusY, 0, Math.PI * 2, false, 0);
+        return shape;
+      };
+
+      const createRectangleShape = (width, height) => {
+        const shape = new THREE.Shape();
+        shape.moveTo(-width / 2, -height / 2);
+        shape.lineTo(width / 2, -height / 2);
+        shape.lineTo(width / 2, height / 2);
+        shape.lineTo(-width / 2, height / 2);
+        shape.lineTo(-width / 2, -height / 2);
+        return shape;
+      };
+
+      const createPolygonShape = (sides = 6, radius = 1) => {
+        const shape = new THREE.Shape();
+        const vertices = [];
+        for (let i = 0; i < sides; i++) {
+          const angle = (i / sides) * Math.PI * 2;
+          vertices.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
+        }
+        shape.moveTo(vertices[0][0], vertices[0][1]);
+        for (let i = 1; i < vertices.length; i++) {
+          shape.lineTo(vertices[i][0], vertices[i][1]);
+        }
+        shape.lineTo(vertices[0][0], vertices[0][1]);
+        return shape;
+      };
+
+      // 断面形状を作成
+      let shape;
+      switch (crossSectionType) {
+        case 'circle':
+          let radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+          if (radius > 5) radius = radius / 1000;
+          radius = Math.max(radius, 0.05);
+          shape = createCircleShape(radius);
+          break;
+        case 'ellipse':
+          let radiusX = (obj.attributes?.radius_x != null) ? Number(obj.attributes.radius_x) : 0.5;
+          let radiusY = (obj.attributes?.radius_y != null) ? Number(obj.attributes.radius_y) : 0.3;
+          if (radiusX > 5) radiusX = radiusX / 1000;
+          if (radiusY > 5) radiusY = radiusY / 1000;
+          radiusX = Math.max(radiusX, 0.05);
+          radiusY = Math.max(radiusY, 0.05);
+          shape = createEllipseShape(radiusX, radiusY);
+          break;
+        case 'rectangle':
+          let width = (obj.attributes?.width != null) ? Number(obj.attributes.width) : 0.8;
+          let height = (obj.attributes?.height != null) ? Number(obj.attributes.height) : 0.6;
+          if (width > 5) width = width / 1000;
+          if (height > 5) height = height / 1000;
+          width = Math.max(width, 0.05);
+          height = Math.max(height, 0.05);
+          shape = createRectangleShape(width, height);
+          break;
+        case 'polygon':
+          const sides = (obj.attributes?.sides != null) ? Number(obj.attributes.sides) : 6;
+          let polyRadius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.4;
+          if (polyRadius > 5) polyRadius = polyRadius / 1000;
+          polyRadius = Math.max(polyRadius, 0.05);
+          shape = createPolygonShape(sides, polyRadius);
+          break;
+        default:
+          // デフォルトは円形
+          let defaultRadius = 0.3;
+          shape = createCircleShape(defaultRadius);
+      }
+
+      // パスを作成（verticesから3D曲線を作成）
+      const hasDepthAttrs = (
+        obj.attributes &&
+        obj.attributes.start_point_depth != null &&
+        obj.attributes.end_point_depth != null &&
+        Number.isFinite(Number(obj.attributes.start_point_depth)) &&
+        Number.isFinite(Number(obj.attributes.end_point_depth))
+      );
+
+      // 断面形状の最大サイズを計算（Y座標計算用）
+      let maxShapeSize = 0.3;
+      if (crossSectionType === 'circle' || crossSectionType === 'polygon') {
+        maxShapeSize = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+        if (maxShapeSize > 5) maxShapeSize = maxShapeSize / 1000;
+      } else if (crossSectionType === 'ellipse') {
+        const rx = (obj.attributes?.radius_x != null) ? Number(obj.attributes.radius_x) : 0.5;
+        const ry = (obj.attributes?.radius_y != null) ? Number(obj.attributes.radius_y) : 0.3;
+        maxShapeSize = Math.max(rx, ry);
+        if (maxShapeSize > 5) maxShapeSize = maxShapeSize / 1000;
+      } else if (crossSectionType === 'rectangle') {
+        const w = (obj.attributes?.width != null) ? Number(obj.attributes.width) : 0.8;
+        const h = (obj.attributes?.height != null) ? Number(obj.attributes.height) : 0.6;
+        maxShapeSize = Math.max(w, h) / 2;
+        if (maxShapeSize > 5) maxShapeSize = maxShapeSize / 1000;
+      }
+      maxShapeSize = Math.max(maxShapeSize, 0.05);
+
+      // 頂点をThree.js座標系に変換
+      const pathPoints = geom.vertices.map((vertex, index) => {
+        // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
+        let y;
+        if (hasDepthAttrs) {
+          // 各頂点の深さを補間（始点と終点の深さから線形補間）
+          const startDepth = Number(obj.attributes.start_point_depth / 100);
+          const endDepth = Number(obj.attributes.end_point_depth / 100);
+          const t = index / Math.max(geom.vertices.length - 1, 1);
+          const depth = startDepth + (endDepth - startDepth) * t;
+          y = depth >= 0 ? -(depth + maxShapeSize) : depth;
+        } else {
+          y = vertex[2] + maxShapeSize;
+        }
+        return new THREE.Vector3(vertex[1], y, vertex[0]);
+      });
+
+      // パスタイプに応じて曲線を作成
+      const isSpline = geom.type === 'Spline';
+      const path = new THREE.CatmullRomCurve3(pathPoints, isSpline);
+
+      // 押し出し図形を作成
+      const extrudeSettings = {
+        steps: 100,
+        bevelEnabled: false,
+        extrudePath: path
+      };
+      geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    }
     // LineString系の処理を統合（Cylinder + LineString と LineString）
-    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
+    else if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
       if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
         // 始点と終点を使用してCylinderGeometryを作成
         const start = geom.vertices[0];
@@ -128,36 +292,31 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
 
-        // 半径を先に計算（天端から中心位置を算出するため）
+        // 半径を先に計算
         let radius;
-        if (shapeTypeName === 'Cylinder') {
-          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+        if (shapeTypeName === 'Cylinder' || shapeTypeName === 'MultiCylinder') {
+          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0;
           if (radius > 5) radius = radius / 1000;
           radius = Math.max(radius, 0.05);
         } else {
           radius = 0.05;
         }
-
         let startPoint, endPoint;
         if (hasDepthAttrs) {
-          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
-          // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = (startDepth > 0 ? -startDepth : startDepth) - radius;
-          const endCenterY = (endDepth > 0 ? -endDepth : endDepth) - radius;
-          startPoint = new THREE.Vector3(start[0], startCenterY, start[1]);
-          endPoint = new THREE.Vector3(end[0], endCenterY, end[1]);
+          const startCenterY = startDepth > 0 ? -(startDepth + radius) : startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth + radius) : endDepth;
+          startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
+          endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
-          // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
-          // 頂点座標も天端を表すと仮定し、半径を引いて中心位置を計算
-          startPoint = new THREE.Vector3(start[0], start[2] - radius, start[1]);
-          endPoint = new THREE.Vector3(end[0], end[2] - radius, end[1]);
+          startPoint = new THREE.Vector3(start[1], start[2] + radius, start[0]);
+          endPoint = new THREE.Vector3(end[1], end[2] + radius, end[0]);
         }
 
-        // 円柱の高さと方向を計算
+        // 円柱の高さを計算
         const height = startPoint.distanceTo(endPoint);
-        geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
+        geometry = new THREE.CylinderGeometry(radius, radius, height, 24);
       } else {
         // 頂点が不足している場合は簡易表示
         geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
@@ -174,9 +333,15 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           break;
         case 'MultiLineString':
         case 'Arc':
-        case 'Spline':
           // 簡易表示
           geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+          break;
+        case 'Spline':
+          // Splineは上記のExtrusion処理で処理される可能性があるため、
+          // cross_section_typeがない場合のみ簡易表示
+          if (!crossSectionType) {
+            geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+          }
           break;
         case 'Circle':
           geometry = new THREE.SphereGeometry(geom.radius || 0.5, 32, 32);
@@ -207,25 +372,38 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       }
     }
 
-    const material = new THREE.MeshStandardMaterial({
-      color: colorHex,
-      metalness: 0.6,
-      roughness: 0.4,
-      transparent: opacity < 1,
-      opacity,
+    const material = hideBackground
+      ? new THREE.MeshLambertMaterial({
+        color: colorHex,
+        transparent: opacity < 1,
+        opacity,
+        flatShading: true,  // フラットシェーディングで断面図らしく
+        emissive: new THREE.Color(colorHex).multiplyScalar(0.2),  // 少し自己発光させて見やすく
+        emissiveIntensity: 0.3
+      })
+      : new THREE.MeshStandardMaterial({
+        color: colorHex,
+        metalness: obj.attributes?.cross_section_type ? 0.3 : 0.6,  // 押し出し図形は金属感を下げる
+        roughness: 0.4,
+        transparent: opacity < 1,
+        opacity,
+        side: THREE.DoubleSide,  // 両面描画で見やすく
 
-      // // リアルな質感を追加
-      // envMapIntensity: 0.8,  // 環境マッピングの強度
-
-      // // 深度感を出すために微妙な自己発光
-      // emissive: new THREE.Color(colorHex).multiplyScalar(0.1),
-      // emissiveIntensity: 0.05
-    });
+        // 押し出し図形には少し自己発光を追加して見やすく
+        emissive: obj.attributes?.cross_section_type ? new THREE.Color(colorHex).multiplyScalar(0.2) : new THREE.Color(0x000000),
+        emissiveIntensity: obj.attributes?.cross_section_type ? 0.2 : 0
+      });
 
     const mesh = new THREE.Mesh(geometry, material);
 
+    // 位置設定：押し出し図形の処理
+    if (isExtrusionType) {
+      // ExtrudeGeometryは既にパスに沿って形状が作成されているため、
+      // 追加の位置設定や回転は不要（パスが既に適切な位置に配置されている）
+      // メッシュは原点に配置されるが、パス自体が正しい座標に配置されている
+    }
     // 位置設定：LineString系の統合処理
-    if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
+    else if ((shapeTypeName === 'Cylinder' && geom.type === 'LineString') || shapeTypeName === 'LineString' || shapeTypeName === 'MultiCylinder') {
       if (Array.isArray(geom.vertices) && geom.vertices.length >= 2) {
         // LineString系の位置設定
         const start = geom.vertices[0];
@@ -238,10 +416,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           Number.isFinite(Number(obj.attributes.end_point_depth))
         );
 
-        // 半径を先に計算（天端から中心位置を算出するため）
+        // 半径を先に計算
         let radius;
-        if (shapeTypeName === 'Cylinder') {
-          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0.3;
+        if (shapeTypeName === 'Cylinder' || shapeTypeName === 'MultiCylinder') {
+          radius = (obj.attributes?.radius != null) ? Number(obj.attributes.radius) : 0;
           if (radius > 5) radius = radius / 1000;
           radius = Math.max(radius, 0.05);
         } else {
@@ -250,35 +428,27 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
 
         let startPoint, endPoint;
         if (hasDepthAttrs) {
-          // start_point_depthとend_point_depthは管路の天端（上端）の深さを表す
-          // 管路の中心位置を計算するために、天端の深さから半径を引く
           const startDepth = Number(obj.attributes.start_point_depth / 100);
           const endDepth = Number(obj.attributes.end_point_depth / 100);
-          const startCenterY = startDepth > 0 ? -(startDepth - radius): startDepth;
-          const endCenterY = endDepth > 0 ? -(endDepth - radius): endDepth;
-          startPoint = new THREE.Vector3(start[0], startCenterY, -start[1]);
-          endPoint = new THREE.Vector3(end[0], endCenterY, -end[1]);
+          const startCenterY = startDepth > 0 ? -(startDepth + radius) : startDepth;
+          const endCenterY = endDepth > 0 ? -(endDepth + radius) : endDepth;
+          startPoint = new THREE.Vector3(start[1], startCenterY, start[0]);
+          endPoint = new THREE.Vector3(end[1], endCenterY, end[0]);
         } else {
-          // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y)
-          // 頂点座標も天端を表すと仮定し、半径を引いて中心位置を計算
-          startPoint = new THREE.Vector3(start[0], start[2] - radius, -start[1]);
-          endPoint = new THREE.Vector3(end[0], end[2] - radius, -end[1]);
+          startPoint = new THREE.Vector3(start[1], start[2] + radius, start[0]);
+          endPoint = new THREE.Vector3(end[1], end[2] + radius, end[0]);
         }
-        // 円柱を正しい方向に回転
         const direction = endPoint.clone().sub(startPoint).normalize();
         const up = new THREE.Vector3(0, 1, 0);
         const quaternion = new THREE.Quaternion();
         quaternion.setFromUnitVectors(up, direction);
-        // geometry.applyQuaternion(quaternion);
         mesh.setRotationFromQuaternion(quaternion);
         const center = startPoint.clone().add(endPoint).multiplyScalar(0.5);
         mesh.position.copy(center);
       }
     } else {
-      // その他の形状の位置設定
-      // データ座標系: [0]=東西(X), [1]=南北(Z), [2]=上下(Y) → Three.js: (x, y, z)
       const center = geom.center || geom.start || geom.vertices?.[0] || [0, 0, 0];
-      mesh.position.set(center[0], center[2], center[1]);
+      mesh.position.set(center[1], center[2], center[0]);
     }
 
     mesh.castShadow = true;
@@ -341,7 +511,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       const color = entry?.color;
       const alpha = entry?.alpha ?? 1;
       if (val == null || !color) return;
-      // 後勝ち/上書き。必要ならここで優先ルールを変更
+      // 後勝ち/上書き
       map[val] = { color: `#${color}`, alpha };
     });
     return map;
@@ -432,11 +602,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const rect = mountRef.current.getBoundingClientRect();
     mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    // マウスが動いたことをフラグで記録（パフォーマンス最適化）
     mouseMovedRef.current = true;
 
-    // 左Shiftキーが押されている場合は距離計測を優先（管路ドラッグを無効化）
+    // 左Shiftキーが押されている場合は距離計測を優先
     if (event.shiftKey) {
       return;
     }
@@ -496,10 +664,16 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       false
     );
 
-    if (intersects.length > 0) {
-      const clickedObject = intersects[0].object;
+    // visible: true のオブジェクトのみをフィルタリング
+    const visibleIntersects = intersects.filter(intersect => intersect.object.visible);
 
-      if (clickedObject.userData.objectData && clickedObject === selectedMeshRef.current) {
+    if (visibleIntersects.length > 0) {
+      const clickedObject = visibleIntersects[0].object;
+
+      // すでに選択されているオブジェクトで、かつCtrlキーが押されている場合のみドラッグ開始
+      if (clickedObject.userData.objectData &&
+        clickedObject === selectedMeshRef.current &&
+        event.ctrlKey) {
         // 選択されたオブジェクトをドラッグ開始
         isDragging.current = true;
 
@@ -615,6 +789,57 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     }
   };
 
+  // アウトライン表示関数（EdgesGeometry方式）
+  const showOutline = (mesh) => {
+    // 既存のアウトラインを削除
+    clearOutline();
+    
+    if (!mesh || !sceneRef.current || !mesh.geometry) return;
+    
+    try {
+      // EdgesGeometryでエッジを抽出（閾値角度を大きくして外枠のみ）
+      const edges = new THREE.EdgesGeometry(mesh.geometry, Math.PI * 0.9);
+      const outlineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,  // 黄色
+        linewidth: 2,
+        depthTest: false,  // 常に前面に表示
+        depthWrite: false
+      });
+      
+      const outline = new THREE.LineSegments(edges, outlineMaterial);
+      
+      // 元のメッシュと同じ位置・回転・スケールを適用
+      outline.position.copy(mesh.position);
+      outline.rotation.copy(mesh.rotation);
+      outline.scale.copy(mesh.scale);
+      
+      // メッシュの親オブジェクトがある場合、その変換も考慮
+      if (mesh.parent && mesh.parent !== sceneRef.current) {
+        mesh.parent.updateMatrixWorld();
+        outline.applyMatrix4(mesh.parent.matrixWorld);
+      }
+      
+      sceneRef.current.add(outline);
+      outlineHelperRef.current = outline;
+    } catch (error) {
+      console.error('Failed to create outline:', error);
+    }
+  };
+
+  // アウトライン削除関数
+  const clearOutline = () => {
+    if (outlineHelperRef.current && sceneRef.current) {
+      sceneRef.current.remove(outlineHelperRef.current);
+      if (outlineHelperRef.current.geometry) {
+        outlineHelperRef.current.geometry.dispose();
+      }
+      if (outlineHelperRef.current.material) {
+        outlineHelperRef.current.material.dispose();
+      }
+      outlineHelperRef.current = null;
+    }
+  };
+
   // クリックハンドラー
   const handleClick = (event) => {
     // 左Shiftキーが押されている場合は距離計測を優先（管路選択を無効化）
@@ -644,15 +869,63 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       false
     );
 
-    if (intersects.length > 0) {
-      const clickedObject = intersects[0].object;
-      if (clickedObject.userData.objectData) {
-        setSelectedObject(clickedObject.userData.objectData);
-        selectedMeshRef.current = clickedObject;
+    // visible: true のオブジェクトのみをフィルタリング
+    const visibleIntersects = intersects.filter(intersect => intersect.object.visible);
 
-        // アウトライン表示を更新
-        if (outlinePassRef.current) {
-          outlinePassRef.current.selectedObjects = [clickedObject];
+    if (visibleIntersects.length > 0) {
+      const clickedObject = visibleIntersects[0].object;
+      const clickPoint = visibleIntersects[0].point; // クリックした位置の3D座標
+      if (clickedObject.userData.objectData) {
+        // 断面自動作成モードの場合はアウトライン表示のみ（refで最新の値を参照）
+        if (autoModeEnabledRef.current) {
+          // 断面表示を確実にクリア
+          if (crossSectionRef.current) {
+            crossSectionRef.current.clear();
+          }
+          
+          setSelectedObject(clickedObject.userData.objectData);
+          selectedMeshRef.current = clickedObject;
+
+          // アウトライン表示を更新
+          showOutline(clickedObject);
+          
+          // 生成された断面マーカーから、クリック位置に最も近い断面の位置を使用して断面を生成
+          if (generatedSections && generatedSections.length > 0 && crossSectionRef.current) {
+            // クリック位置に最も近い断面を探す
+            let closestSection = null;
+            let minDistance = Infinity;
+            
+            generatedSections.forEach(section => {
+              const sectionPos = new THREE.Vector3(section.position.x, section.position.y, section.z);
+              const distance = clickPoint.distanceTo(sectionPos);
+              if (distance < minDistance) {
+                minDistance = distance;
+                closestSection = section;
+              }
+            });
+            
+            if (closestSection) {
+              // 断面マーカーの位置を使用して断面を生成
+              const sectionClickPoint = new THREE.Vector3(
+                closestSection.position.x,
+                closestSection.position.y,
+                closestSection.z
+              );
+              const gridAngle = closestSection.angle || 0;
+              crossSectionRef.current.createCrossSection(clickedObject, sectionClickPoint, gridAngle);
+            }
+          }
+        } else if (enableCrossSectionMode && crossSectionRef.current) {
+          // 断面モードの場合は断面を生成
+          crossSectionRef.current.createCrossSection(clickedObject, clickPoint);
+          // デバッグログ削除
+        } else {
+          // 通常モードの場合は選択
+          setSelectedObject(clickedObject.userData.objectData);
+          selectedMeshRef.current = clickedObject;
+
+          // アウトライン表示を更新
+          showOutline(clickedObject);
         }
       }
     } else {
@@ -748,9 +1021,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         selectedMeshRef.current = newMesh;
 
         // アウトライン表示を更新
-        if (outlinePassRef.current) {
-          outlinePassRef.current.selectedObjects = [newMesh];
-        }
+        showOutline(newMesh);
 
         setSelectedObject(newObjectData);
       }
@@ -786,9 +1057,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       setSelectedObject(null);
 
       // アウトラインをクリア
-      if (outlinePassRef.current) {
-        outlinePassRef.current.selectedObjects = [];
-      }
+      clearOutline();
     }
   };
 
@@ -948,11 +1217,13 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    // 背景をSkyに変更（nullで透明に）
-    scene.background = null;
+    // 背景を設定（断面図モードの場合は白、通常モードはSkyコンポーネントが描画）
+    scene.background = hideBackground ? new THREE.Color(0xf5f5f5) : null;
 
-    // フォグを追加して深度感を出す
-    scene.fog = new THREE.Fog(0x8B7355, 20, 100);
+    // フォグを追加して深度感を出す（断面図モードでは無効）
+    if (!hideBackground) {
+      scene.fog = new THREE.Fog(0x8B7355, 20, 100);
+    }
     // カメラの作成
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -967,15 +1238,30 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     cameraRef.current = camera;
 
     // レンダラーの作成
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: false,
+      powerPreference: "high-performance"
+    });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // ピクセル比率を制限
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     // トーンマッピング設定（EffectComposer使用時の色と明るさを正確に）
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+
+    // WebGLコンテキスト喪失のハンドリング
+    const handleContextLost = (event) => {
+      event.preventDefault();
+      console.warn('WebGL context lost. Preventing default behavior.');
+    };
+
+    const handleContextRestored = () => {};
+
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
 
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -1009,7 +1295,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     controlsRef.current = controls;
 
     // Sky コンポーネントの初期化（コンテナを渡す）
-    const skyComponent = new SkyComponent(scene, renderer, mountRef.current);
+    // 断面図生成モードの場合はGUIを非表示
+    const skyComponent = new SkyComponent(scene, renderer, mountRef.current, !enableCrossSectionMode);
     skyComponentRef.current = skyComponent;
 
     // 初期カメラは props.userPositions から設定（App 側でフェッチ済み）
@@ -1057,7 +1344,10 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     // OrbitControlsがマウス操作を処理するため、カスタムマウスドラッグは削除
 
     // ライティングを設定（太陽の位置に合わせて調整）
-    const ambientLight = new THREE.AmbientLight(0x808080, 1.4);
+    const ambientLight = new THREE.AmbientLight(
+      0xffffff,  // 白色
+      hideBackground ? 2.5 : 1.4  // 断面図モードでは2.5、通常は1.4
+    );
     scene.add(ambientLight);
 
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -1075,65 +1365,17 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     additionalLight.position.set(-1, -1, 1);
     scene.add(additionalLight);
 
-    // 床（固定地表面 - ライトグレー）
-    const floorGeometry = new THREE.PlaneGeometry(10000, 10000);
-    const floorMaterial = new THREE.MeshStandardMaterial({
-      color: '#D3D3D3',
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.7
-    });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2; // 水平に配置
-    floor.position.y = 0;
-    floor.receiveShadow = true;
-    scene.add(floor);
-    floorRef.current = floor;
+    // EffectComposerとOutlinePassは使用しない（EdgesGeometry方式を使用）
 
-    // 土壌の断面を追加（オプション - より3D感）
-    const soilDepth = 10; // 土壌の深さ（メートル）
-    const soilGeometry = new THREE.BoxGeometry(10000, soilDepth, 10000);
-    const soilMaterial = new THREE.MeshStandardMaterial({
-      color: '#6B5444',      // 濃い土の色
-      transparent: true,
-      opacity: 0.3,          // かなり透明にして管路が見える
-      side: THREE.DoubleSide,
-      roughness: 0.95,
-      metalness: 0.0,
-      depthWrite: false      // 深度バッファに書き込まない
-    });
-    const soil = new THREE.Mesh(soilGeometry, soilMaterial);
-    soil.position.y = -soilDepth / 2; // Y=0より下に配置
-    soil.receiveShadow = true;
-    scene.add(soil);
-
-    // EffectComposerとOutlinePassの設定
-    const composer = new EffectComposer(renderer);
-
-    // 基本レンダリングパス
-    const renderPass = new RenderPass(scene, camera);
-    composer.addPass(renderPass);
-
-    // アウトラインパス
-    const outlinePass = new OutlinePass(
-      new THREE.Vector2(mountRef.current.clientWidth, mountRef.current.clientHeight),
-      scene,
-      camera
-    );
-    outlinePass.edgeStrength = 3.0; // アウトラインの強度
-    outlinePass.edgeGlow = 0.5; // アウトラインの発光
-    outlinePass.edgeThickness = 2.0; // アウトラインの太さ
-    outlinePass.pulsePeriod = 0; // 脈動効果なし
-    outlinePass.visibleEdgeColor.set('#ffff00'); // 黄色
-    outlinePass.hiddenEdgeColor.set('#ffaa00'); // オレンジ色
-    composer.addPass(outlinePass);
-
-    // ガンマ補正パス（色と明るさを正確にレンダリング）
-    const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
-    composer.addPass(gammaCorrectionPass);
-
-    composerRef.current = composer;
-    outlinePassRef.current = outlinePass;
+    // 断面図の初期化（断面モードが有効な場合）
+    if (enableCrossSectionMode) {
+      const crossSection = new CrossSectionPlane(
+        scene,
+        camera,
+        objectsRef
+      );
+      crossSectionRef.current = crossSection;
+    }
 
     // 距離計測の初期化
     const distanceMeasurement = new DistanceMeasurement(
@@ -1142,7 +1384,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       renderer,
       objectsRef,  // refオブジェクト自体を渡す
       raycasterRef.current,
-      mouseRef.current
+      mouseRef.current,
+      crossSectionRef  // CSG断面用のrefを追加
     );
     distanceMeasurement.setResultUpdateCallback(setMeasurementResult);
     distanceMeasurement.enable(mountRef.current);
@@ -1159,10 +1402,17 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     // リサイズハンドラー
     const handleResize = () => {
       if (!mountRef.current) return;
-      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+      const width = mountRef.current.clientWidth;
+      const height = mountRef.current.clientHeight;
+
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-      composer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      renderer.setSize(width, height);
+
+      // CrossSectionPlaneのLine2マテリアルのresolutionを更新
+      if (crossSectionRef.current) {
+        crossSectionRef.current.handleResize(width, height);
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -1277,9 +1527,16 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         keysPressed.current['1'] = false;
       }
 
-      // 7: 管路表示トグル
+      // 7: 管路表示トグル + 切り口表示トグル
       if (keysPressed.current['7']) {
-        setShowPipes((prev) => !prev);
+        setShowPipes((prev) => {
+          const newShowPipes = !prev;
+          // 管路と切り口の表示を逆にする
+          if (enableCrossSectionMode && crossSectionRef.current) {
+            crossSectionRef.current.toggleCrossSections(!newShowPipes);
+          }
+          return newShowPipes;
+        });
         keysPressed.current['7'] = false;
       }
 
@@ -1305,11 +1562,18 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           setSelectedObject(null);
           selectedMeshRef.current = null;
           // アウトラインをクリア
-          if (outlinePassRef.current) {
-            outlinePassRef.current.selectedObjects = [];
-          }
+          clearOutline();
         }
         keysPressed.current['escape'] = false;
+      }
+
+      // Backspace: 断面をクリア（断面モードの場合）
+      if (keysPressed.current['backspace']) {
+        if (enableCrossSectionMode && crossSectionRef.current) {
+          crossSectionRef.current.clear();
+          // デバッグログ削除
+        }
+        keysPressed.current['backspace'] = false;
       }
 
       // U:パン重心
@@ -1354,6 +1618,9 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
           false
         );
 
+        // visible: true のオブジェクトのみをフィルタリング
+        const visibleIntersects = intersects.filter(intersect => intersect.object.visible);
+
         // 前回ホバーしていたオブジェクトをクリア
         if (hoveredObjectRef.current) {
           document.body.style.cursor = 'default';
@@ -1361,8 +1628,8 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         }
 
         // 新しくホバーしたオブジェクトを設定（選択中は除外）
-        if (intersects.length > 0) {
-          const hoveredObject = intersects[0].object;
+        if (visibleIntersects.length > 0) {
+          const hoveredObject = visibleIntersects[0].object;
           if (hoveredObject !== selectedMeshRef.current) {
             document.body.style.cursor = 'pointer';
             hoveredObjectRef.current = hoveredObject;
@@ -1400,33 +1667,126 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
         distanceMeasurementRef.current.update();
       }
 
-      composer.render();
+      // 断面の深さラベルをカメラからの距離に応じて更新
+      if (crossSectionRef.current) {
+        crossSectionRef.current.update();
+      }
+
+      // アウトラインの位置を更新（選択されたメッシュが移動した場合）
+      if (outlineHelperRef.current && selectedMeshRef.current) {
+        const mesh = selectedMeshRef.current;
+        mesh.updateMatrixWorld();
+        
+        // アウトラインの位置・回転・スケールを更新
+        outlineHelperRef.current.position.copy(mesh.position);
+        outlineHelperRef.current.rotation.copy(mesh.rotation);
+        outlineHelperRef.current.scale.copy(mesh.scale);
+        outlineHelperRef.current.updateMatrixWorld();
+      }
+
+      // レンダリング（エラーハンドリング付き）
+      try {
+        renderer.render(scene, camera);
+      } catch (error) {
+        console.error('Rendering error:', error);
+        // エラー発生時はアニメーションを停止
+        return;
+      }
     };
     animate();
 
     // クリーンアップ
     return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      if (mountRef.current) {
-        mountRef.current.removeEventListener('mousemove', handleMouseMove);
-        mountRef.current.removeEventListener('mousedown', handleMouseDown);
-        mountRef.current.removeEventListener('mouseup', handleMouseUp);
-        mountRef.current.removeEventListener('click', handleClick);
-        if (renderer.domElement.parentNode === mountRef.current) {
-          mountRef.current.removeChild(renderer.domElement);
+      // mountRef.currentを一時変数に保存（null化される前に）
+      const currentMount = mountRef.current;
+
+      // 距離計測のクリーンアップ（最初に実行）
+      if (distanceMeasurementRef.current && currentMount) {
+        try {
+          distanceMeasurementRef.current.dispose(currentMount);
+        } catch (error) {
+          console.error('距離計測のクリーンアップでエラー:', error);
         }
       }
-      // 距離計測のクリーンアップ
-      if (distanceMeasurementRef.current) {
-        distanceMeasurementRef.current.dispose(mountRef.current);
+
+      // 断面図のクリーンアップ
+      if (crossSectionRef.current) {
+        try {
+          crossSectionRef.current.dispose();
+        } catch (error) {
+          console.error('断面図のクリーンアップでエラー:', error);
+        }
       }
-      skyComponent.dispose();
-      controls.dispose();
-      renderer.dispose();
+
+      // イベントリスナーの削除
+      try {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+      } catch (error) {
+        console.error('windowイベントリスナーの削除でエラー:', error);
+      }
+      try {
+        if (currentMount) {
+          currentMount.removeEventListener('mousemove', handleMouseMove);
+          currentMount.removeEventListener('mousedown', handleMouseDown);
+          currentMount.removeEventListener('mouseup', handleMouseUp);
+          currentMount.removeEventListener('click', handleClick);
+        }
+      } catch (error) {
+        console.error('DOMイベントリスナーの削除でエラー:', error);
+      }
+
+      // コンポーネントのクリーンアップ
+      if (skyComponentRef.current) {
+        skyComponentRef.current.dispose();
+      }
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+
+      // アウトラインのクリーンアップ
+      clearOutline();
+
+      // シーン内のすべてのオブジェクトをクリーンアップ
+      if (scene) {
+        scene.traverse((object) => {
+          if (object.geometry) {
+            object.geometry.dispose();
+          }
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => {
+                if (material.map) material.map.dispose();
+                material.dispose();
+              });
+            } else {
+              if (object.material.map) object.material.map.dispose();
+              object.material.dispose();
+            }
+          }
+        });
+        scene.clear();
+      }
+
+      // レンダラーのクリーンアップ
+      if (renderer) {
+        // レンダラーのdisposeでイベントリスナーも自動的にクリーンアップされます
+        if (currentMount && renderer.domElement.parentNode === currentMount) {
+          currentMount.removeChild(renderer.domElement);
+        }
+        renderer.dispose();
+        // forceContextLossはWebGL1のみで利用可能
+        if (renderer.forceContextLoss) {
+          renderer.forceContextLoss();
+        }
+        // WebGL2の場合
+        const gl = renderer.getContext();
+        if (gl && gl.getExtension('WEBGL_lose_context')) {
+          gl.getExtension('WEBGL_lose_context').loseContext();
+        }
+      }
     };
-    // }, [onCameraMove, onObjectClick]);
   }, [userPositions]);
 
   // オブジェクトの作成（初回のみ）
@@ -1485,7 +1845,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     });
 
     // オブジェクト作成後に地表面のサイズを更新
-    if (floorRef.current && Object.values(objectsRef.current).length > 0) {
+    if (Object.values(objectsRef.current).length > 0) {
       const box = new THREE.Box3();
       Object.values(objectsRef.current).forEach((m) => {
         if (m) {
@@ -1500,19 +1860,14 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       // XとZの最大値を取得し、余裕を持たせる（2倍）
       const maxSize = Math.max(size.x, size.z, 1000) * 2;
 
-      // 既存の床を削除
-      sceneRef.current.remove(floorRef.current);
-      floorRef.current.geometry.dispose();
-      floorRef.current.material.dispose();
-
       // 新しいサイズで床を再作成
       const floorGeometry = new THREE.PlaneGeometry(maxSize, maxSize);
       const floorMaterial = new THREE.MeshStandardMaterial({
-        color: '#8B7355',
+        color: '#d0d0d0',
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.8,
-        roughness: 0.7
+        roughness: 0.5
       });
       const floor = new THREE.Mesh(floorGeometry, floorMaterial);
       floor.rotation.x = -Math.PI / 2;
@@ -1562,13 +1917,133 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
     }
   }, [showBackground]);
 
+  // 断面自動作成モードの状態をrefに同期
+  useEffect(() => {
+    autoModeEnabledRef.current = autoModeEnabled;
+  }, [autoModeEnabled]);
+
+  // 選択されたオブジェクトの変更を通知
+  useEffect(() => {
+    if (onSelectedObjectChange) {
+      onSelectedObjectChange(selectedObject, selectedMeshRef.current);
+    }
+  }, [selectedObject, onSelectedObjectChange]);
+
+  // 断面自動作成モードが変更された時の処理
+  useEffect(() => {
+    if (!mountRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+    
+    if (autoModeEnabled && enableCrossSectionMode) {
+      // 断面自動作成モードが有効になった時
+      // 既存の断面表示（水平線など）を確実にクリア
+      if (crossSectionRef.current) {
+        crossSectionRef.current.clear();
+        // クリア後、少し待ってから再度クリア（確実に削除するため）
+        setTimeout(() => {
+          if (crossSectionRef.current) {
+            crossSectionRef.current.clear();
+          }
+        }, 100);
+      }
+      
+      // アウトラインをクリア（EdgesGeometry方式を使用するため、特別な初期化は不要）
+      clearOutline();
+    } else if (!autoModeEnabled && enableCrossSectionMode) {
+      // 断面自動作成モードが無効になった時
+      // アウトラインをクリア（通常の断面モードに戻る）
+      clearOutline();
+    }
+  }, [autoModeEnabled, enableCrossSectionMode]);
+
+  // 生成された断面を3D空間に描画
+  const drawGeneratedSectionsInScene = (sections) => {
+    if (!sceneRef.current) return;
+
+    // 既存の断面マーカーをクリア
+    if (generatedSectionMarkersRef.current) {
+      generatedSectionMarkersRef.current.forEach(marker => {
+        sceneRef.current.remove(marker);
+        if (marker.geometry) marker.geometry.dispose();
+        if (marker.material) marker.material.dispose();
+      });
+      generatedSectionMarkersRef.current = [];
+    }
+
+    // 各断面の位置にマーカーを描画
+    sections.forEach((section) => {
+      // 断面位置を示す球体マーカー
+      const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x00ff00,
+        emissive: 0x00ff00,
+        emissiveIntensity: 0.5
+      });
+      const marker = new THREE.Mesh(geometry, material);
+      marker.position.copy(section.position);
+      marker.userData.sectionData = section;
+      sceneRef.current.add(marker);
+      generatedSectionMarkersRef.current.push(marker);
+    });
+  };
+
+  // generatedSectionsが変更された時に描画
+  useEffect(() => {
+    if (generatedSections && generatedSections.length > 0) {
+      drawGeneratedSectionsInScene(generatedSections);
+    } else {
+      // クリア
+      if (generatedSectionMarkersRef.current) {
+        generatedSectionMarkersRef.current.forEach(marker => {
+          if (sceneRef.current) {
+            sceneRef.current.remove(marker);
+            if (marker.geometry) marker.geometry.dispose();
+            if (marker.material) marker.material.dispose();
+          }
+        });
+        generatedSectionMarkersRef.current = [];
+      }
+    }
+  }, [generatedSections]);
+
+  // 断面表示モードの処理
+  useEffect(() => {
+    if (sectionViewMode && generatedSections && generatedSections.length > 0 && crossSectionRef.current) {
+      const currentSection = generatedSections[currentSectionIndex];
+      if (currentSection) {
+        // 選択された管路を取得
+        const selectedPipe = selectedMeshRef.current;
+        if (selectedPipe && selectedPipe.userData.objectData) {
+          // 断面を生成
+          const clickPoint = new THREE.Vector3(
+            currentSection.position.x,
+            currentSection.position.y,
+            currentSection.z
+          );
+          // グリッド線の角度を渡す
+          const gridAngle = currentSection.angle || 0;
+          crossSectionRef.current.clear();
+          crossSectionRef.current.createCrossSection(selectedPipe, clickPoint, gridAngle);
+        }
+      }
+    } else if (!sectionViewMode && crossSectionRef.current) {
+      // 断面表示モードが無効になった時はクリア
+      crossSectionRef.current.clear();
+    }
+  }, [sectionViewMode, currentSectionIndex, generatedSections]);
+
+  // refで公開するメソッド
+  useImperativeHandle(ref, () => ({
+    drawGeneratedSections: (sections) => {
+      drawGeneratedSectionsInScene(sections);
+    }
+  }));
 
   return (
     <div className="scene3d-container">
       <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 
       {/* 左上の管路情報 */}
-      {showGuides && (
+      {showGuides && !hideInfoPanel && (
         <div className="pipeline-info-text">
           ◆管路情報<br />
           左クリック: 管路情報を表示します<br />
@@ -1589,12 +2064,12 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
             <PipelineInfoDisplay
               selectedObject={selectedObject}
               shapeTypes={shapeTypes}
-              onRegister={handleRegister}
-              onDuplicate={handleDuplicate}
-              onDelete={handleDelete}
-              onAdd={handleAdd}
+              // onRegister={handleRegister}
+              // onDuplicate={handleDuplicate}
+              // onDelete={handleDelete}
+              // onAdd={handleAdd}
               onRestore={handleRestore}
-              onRestoreAll={handleRestoreAll}
+              // onRestoreAll={handleRestoreAll}
             />
           )}
         </div>
@@ -1619,7 +2094,7 @@ function Scene3D({ cityJsonData, onObjectClick, onCameraMove, userPositions, sha
       )}
     </div>
   );
-}
+});
 
 export default Scene3D;
 

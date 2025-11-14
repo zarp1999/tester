@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
 import './App.css';
-import Scene3D from './components/Scene3D';
+import Scene3DView from './components/views/Scene3DView';
+import CrossSectionView from './components/views/CrossSectionView';
+import ExtrusionTestView from './components/views/ExtrusionTestView';
 
 /**
  * メインアプリケーションコンポーネント
- * CityJSONデータを読み込み、3Dシーンを表示
+ * CityJSONデータを読み込み、複数のビュー（3Dシーン、断面図生成）を提供
  */
 function App() {
   const [cityJsonData, setCityJsonData] = useState(null);
@@ -12,7 +15,6 @@ function App() {
   const [shapeTypes, setShapeTypes] = useState(null);
   const [sourceTypes, setSourceTypes] = useState(null);
   const [userPositions, setUserPositions] = useState(null);
-  const [selectedObject, setSelectedObject] = useState(null);
   const [loadingError, setLoadingError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -56,16 +58,6 @@ function App() {
     loadData();
   }, []);
 
-  const handleObjectClick = (object) => {
-    setSelectedObject(object);
-  };
-
-
-  const handleCameraPositionChange = (positionData) => {
-    console.log('カメラ位置変更:', positionData);
-    // 将来的にはここでAPIを呼び出してデータを取得
-  };
-
   const handleRetry = () => {
     window.location.reload();
   };
@@ -96,15 +88,41 @@ function App() {
     <div className="App">
       <div className="main-content">
         <div className="scene-container">
-          <Scene3D
-            cityJsonData={cityJsonData}
-            onObjectClick={handleObjectClick}
-            onCameraMove={handleCameraPositionChange}
-            userPositions={userPositions}
-            shapeTypes={shapeTypes}
-            layerData={layerData}
-            sourceTypes={sourceTypes}
-          />
+          <Routes>
+            {/* 3Dシーンビュー */}
+            <Route 
+              path="/" 
+              element={
+                <Scene3DView
+                  cityJsonData={cityJsonData}
+                  userPositions={userPositions}
+                  shapeTypes={shapeTypes}
+                  layerData={layerData}
+                  sourceTypes={sourceTypes}
+                />
+              } 
+            />
+            
+            {/* 断面図生成ビュー */}
+            <Route 
+              path="/cross-section" 
+              element={
+                <CrossSectionView
+                  cityJsonData={cityJsonData}
+                  userPositions={userPositions}
+                  shapeTypes={shapeTypes}
+                  layerData={layerData}
+                  sourceTypes={sourceTypes}
+                />
+              } 
+            />
+            
+            {/* 押し出し図形テストビュー */}
+            <Route 
+              path="/extrusion-test" 
+              element={<ExtrusionTestView />} 
+            />
+          </Routes>
         </div>
       </div>
     </div>

@@ -7,13 +7,14 @@ import { GUI } from 'lil-gui';
  * 空と太陽のレンダリングを管理するクラス
  */
 class SkyComponent {
-  constructor(scene, renderer, container = null) {
+  constructor(scene, renderer, container = null, showGUI = true) {
     this.scene = scene;
     this.renderer = renderer;
     this.container = container;
     this.sky = null;
     this.sun = new THREE.Vector3();
     this.gui = null;
+    this.showGUI = showGUI; // GUI表示フラグを追加
     
     // エフェクトコントローラー（Skyパラメータ）
     this.effectController = {
@@ -72,6 +73,11 @@ class SkyComponent {
    * GUIコントロールの初期化
    */
   initGUI() {
+    // showGUIがfalseの場合はGUIを作成しない
+    if (!this.showGUI) {
+      return;
+    }
+    
     this.gui = new GUI({ 
       container: this.container,
       title: 'Sky Controls'
@@ -130,7 +136,7 @@ class SkyComponent {
       this.sky.visible = visible;
     }
     if (!visible) {
-      this.scene.background = new THREE.Color(0x808080); // グレー
+      this.scene.background = new THREE.Color('#d0d0d0'); // グレー
     } else {
       this.scene.background = null; // Skyが表示されるので透明のまま
     }

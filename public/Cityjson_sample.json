@@ -1,38 +1,5 @@
 {
   "CityObjects": {
-    "pipe_13559": {
-      "attributes": {
-        "accuracy": null,
-        "diameter": 250,
-        "end_point_depth": 0,
-        "layer": "42_下水道_現況",
-        "material": "",
-        "pipe_kind": "42_下水道_現況",
-        "radius": 12,
-        "start_point_depth": 0
-      },
-      "created_at": "2025-10-01T11:32:42.677091",
-      "created_user": 1,
-      "feature_id": 27192,
-      "geometry": [
-        {
-          "boundaries": [[0, 1]],
-          "lod": 1,
-          "type": "LineString",
-          "vertices": [
-            [135.534723611934, 104.181721819453, 90],
-            [136.500744561953, 108.026596399119, 90]
-          ]
-        }
-      ],
-      "shape_type": 16,
-      "snapshot_id": 2,
-      "source_id": 1,
-      "source_type_id": 2,
-      "type": "GenericCityObject",
-      "updated_at": "2025-10-01T11:32:42.677091",
-      "updated_user": 1
-    },
     "pipe_1": {
       "type": "GenericCityObject",
       "attributes": {
@@ -40,8 +7,8 @@
         "material": "FCDU",
         "diameter": 200,
         "radius": 12,
-        "start_point_depth": -1.2,
-        "end_point_depth": -1.2
+        "start_point_depth": -120,
+        "end_point_depth": -120
       },
       "geometry": [
         {
@@ -64,30 +31,32 @@
       "created_user": 1,
       "updated_user": 1
     },
-
-    "pipe_2": {
+    "test_circle_polyline": {
       "type": "GenericCityObject",
       "attributes": {
-        "pipe_kind": "水道",
-        "material": "水道管",
-        "diameter": 250,
-        "radius": 125,
-        "start_point_depth": -1.4,
-        "end_point_depth": -1.4
+        "pipe_kind": "テスト_円形_折れ線",
+        "material": "テスト材質",
+        "cross_section_type": "circle",
+        "radius": 0.3,
+        "diameter": 600,
+        "start_point_depth": -120,
+        "end_point_depth": -120
       },
       "geometry": [
         {
           "type": "LineString",
           "lod": 1,
-          "boundaries": [[0, 1]],
+          "boundaries": [[0, 1, 2, 3]],
           "vertices": [
-            [137.500744561953, 108.026596399119, 90],
-            [138.500744561953, 108.026596399119, 90]
+            [150.0, 110.0, 90],
+            [151.0, 112.0, 92],
+            [152.0, 110.0, 94],
+            [153.0, 108.0, 96]
           ]
         }
       ],
-      "shape_type": 16,
-      "feature_id": 2,
+      "shape_type": 21,
+      "feature_id": 20,
       "source_id": 1,
       "source_type_id": 1,
       "snapshot_id": 1,
@@ -96,30 +65,33 @@
       "created_user": 1,
       "updated_user": 1
     },
-
-    "pipe_3": {
+    "test_circle_spline": {
       "type": "GenericCityObject",
       "attributes": {
-        "pipe_kind": "ガス",
-        "material": "ガス管",
-        "diameter": 300,
-        "radius": 150,
-        "start_point_depth": -1.8,
-        "end_point_depth": -1.8
+        "pipe_kind": "テスト_円形_スプライン",
+        "material": "テスト材質",
+        "cross_section_type": "circle",
+        "radius": 0.3,
+        "diameter": 600,
+        "start_point_depth": -130,
+        "end_point_depth": -130
       },
       "geometry": [
         {
-          "type": "LineString",
+          "type": "Spline",
           "lod": 1,
-          "boundaries": [[0, 1]],
+          "boundaries": [[0, 1, 2, 3, 4]],
           "vertices": [
-            [138.500744561953, 108.026596399119, 90],
-            [139.500744561953, 108.026596399119, 90]
+            [154.0, 110.0, 90],
+            [155.0, 112.0, 92],
+            [156.0, 110.0, 94],
+            [157.0, 108.0, 96],
+            [158.0, 110.0, 98]
           ]
         }
       ],
-      "shape_type": 16,
-      "feature_id": 3,
+      "shape_type": 21,
+      "feature_id": 21,
       "source_id": 1,
       "source_type_id": 1,
       "snapshot_id": 1,
@@ -128,30 +100,32 @@
       "created_user": 1,
       "updated_user": 1
     },
-
-    "pipe_4": {
+    "test_ellipse_polyline": {
       "type": "GenericCityObject",
       "attributes": {
-        "pipe_kind": "下水道",
-        "material": "下水道管",
-        "diameter": 400,
-        "radius": 200,
-        "start_point_depth": -2.0,
-        "end_point_depth": -2.0
+        "pipe_kind": "テスト_楕円_折れ線",
+        "material": "テスト材質",
+        "cross_section_type": "ellipse",
+        "radius_x": 0.5,
+        "radius_y": 0.3,
+        "start_point_depth": -140,
+        "end_point_depth": -140
       },
       "geometry": [
         {
           "type": "LineString",
           "lod": 1,
-          "boundaries": [[0, 1]],
+          "boundaries": [[0, 1, 2, 3]],
           "vertices": [
-            [139.500744561953, 108.026596399119, 90],
-            [140.500744561953, 108.026596399119, 90]
+            [160.0, 110.0, 90],
+            [161.0, 112.0, 92],
+            [162.0, 110.0, 94],
+            [163.0, 108.0, 96]
           ]
         }
       ],
-      "shape_type": 16,
-      "feature_id": 4,
+      "shape_type": 21,
+      "feature_id": 22,
       "source_id": 1,
       "source_type_id": 1,
       "snapshot_id": 1,
@@ -160,30 +134,33 @@
       "created_user": 1,
       "updated_user": 1
     },
-
-    "pipe_5": {
+    "test_ellipse_spline": {
       "type": "GenericCityObject",
       "attributes": {
-        "pipe_kind": "ジェイコム",
-        "material": "通信ケーブル",
-        "diameter": 150,
-        "radius": 75,
-        "start_point_depth": -1.0,
-        "end_point_depth": -1.0
+        "pipe_kind": "テスト_楕円_スプライン",
+        "material": "テスト材質",
+        "cross_section_type": "ellipse",
+        "radius_x": 0.5,
+        "radius_y": 0.3,
+        "start_point_depth": -150,
+        "end_point_depth": -150
       },
       "geometry": [
         {
-          "type": "LineString",
+          "type": "Spline",
           "lod": 1,
-          "boundaries": [[0, 1]],
+          "boundaries": [[0, 1, 2, 3, 4]],
           "vertices": [
-            [140.500744561953, 108.026596399119, 90],
-            [141.500744561953, 108.026596399119, 90]
+            [164.0, 110.0, 90],
+            [165.0, 112.0, 92],
+            [166.0, 110.0, 94],
+            [167.0, 108.0, 96],
+            [168.0, 110.0, 98]
           ]
         }
       ],
-      "shape_type": 16,
-      "feature_id": 5,
+      "shape_type": 21,
+      "feature_id": 23,
       "source_id": 1,
       "source_type_id": 1,
       "snapshot_id": 1,
@@ -192,30 +169,32 @@
       "created_user": 1,
       "updated_user": 1
     },
-
-    "pipe_6": {
+    "test_rectangle_polyline": {
       "type": "GenericCityObject",
       "attributes": {
-        "pipe_kind": "東電",
-        "material": "電力ケーブル",
-        "diameter": 180,
-        "radius": 90,
-        "start_point_depth": -1.3,
-        "end_point_depth": -1.3
+        "pipe_kind": "テスト_矩形_折れ線",
+        "material": "テスト材質",
+        "cross_section_type": "rectangle",
+        "width": 0.8,
+        "height": 0.6,
+        "start_point_depth": -160,
+        "end_point_depth": -160
       },
       "geometry": [
         {
           "type": "LineString",
           "lod": 1,
-          "boundaries": [[0, 1]],
+          "boundaries": [[0, 1, 2, 3]],
           "vertices": [
-            [141.500744561953, 108.026596399119, 90],
-            [142.500744561953, 108.026596399119, 90]
+            [170.0, 110.0, 90],
+            [171.0, 112.0, 92],
+            [172.0, 110.0, 94],
+            [173.0, 108.0, 96]
           ]
         }
       ],
-      "shape_type": 16,
-      "feature_id": 6,
+      "shape_type": 21,
+      "feature_id": 24,
       "source_id": 1,
       "source_type_id": 1,
       "snapshot_id": 1,
@@ -224,30 +203,102 @@
       "created_user": 1,
       "updated_user": 1
     },
-
-    "pipe_7": {
+    "test_rectangle_spline": {
       "type": "GenericCityObject",
       "attributes": {
-        "pipe_kind": "警察",
-        "material": "警察回線",
-        "diameter": 120,
-        "radius": 60,
-        "start_point_depth": -0.8,
-        "end_point_depth": -0.8
+        "pipe_kind": "テスト_矩形_スプライン",
+        "material": "テスト材質",
+        "cross_section_type": "rectangle",
+        "width": 0.8,
+        "height": 0.6,
+        "start_point_depth": -170,
+        "end_point_depth": -170
+      },
+      "geometry": [
+        {
+          "type": "Spline",
+          "lod": 1,
+          "boundaries": [[0, 1, 2, 3, 4]],
+          "vertices": [
+            [174.0, 110.0, 90],
+            [175.0, 112.0, 92],
+            [176.0, 110.0, 94],
+            [177.0, 108.0, 96],
+            [178.0, 110.0, 98]
+          ]
+        }
+      ],
+      "shape_type": 21,
+      "feature_id": 25,
+      "source_id": 1,
+      "source_type_id": 1,
+      "snapshot_id": 1,
+      "created_at": "2025-10-13T17:00:00",
+      "updated_at": "2025-10-13T17:00:00",
+      "created_user": 1,
+      "updated_user": 1
+    },
+    "test_polygon_polyline": {
+      "type": "GenericCityObject",
+      "attributes": {
+        "pipe_kind": "テスト_ポリゴン_折れ線",
+        "material": "テスト材質",
+        "cross_section_type": "polygon",
+        "sides": 6,
+        "radius": 0.4,
+        "start_point_depth": -180,
+        "end_point_depth": -180
       },
       "geometry": [
         {
           "type": "LineString",
           "lod": 1,
-          "boundaries": [[0, 1]],
+          "boundaries": [[0, 1, 2, 3]],
           "vertices": [
-            [142.500744561953, 108.026596399119, 90],
-            [143.500744561953, 108.026596399119, 90]
+            [180.0, 110.0, 90],
+            [181.0, 112.0, 92],
+            [182.0, 110.0, 94],
+            [183.0, 108.0, 96]
           ]
         }
       ],
-      "shape_type": 16,
-      "feature_id": 7,
+      "shape_type": 21,
+      "feature_id": 26,
+      "source_id": 1,
+      "source_type_id": 1,
+      "snapshot_id": 1,
+      "created_at": "2025-10-13T17:00:00",
+      "updated_at": "2025-10-13T17:00:00",
+      "created_user": 1,
+      "updated_user": 1
+    },
+    "test_polygon_spline": {
+      "type": "GenericCityObject",
+      "attributes": {
+        "pipe_kind": "テスト_ポリゴン_スプライン",
+        "material": "テスト材質",
+        "cross_section_type": "polygon",
+        "sides": 6,
+        "radius": 0.4,
+        "start_point_depth": -190,
+        "end_point_depth": -190
+      },
+      "geometry": [
+        {
+          "type": "Spline",
+          "lod": 1,
+          "boundaries": [[0, 1, 2, 3, 4]],
+          "vertices": [
+            [184.0, 110.0, 90],
+            [185.0, 112.0, 92],
+            [186.0, 110.0, 94],
+            [187.0, 108.0, 96],
+            [188.0, 110.0, 98]
+          ]
+        }
+      ],
+      "shape_type": 21,
+      "feature_id": 27,
       "source_id": 1,
       "source_type_id": 1,
       "snapshot_id": 1,
